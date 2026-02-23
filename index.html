@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ürün Konfigürasyon Arayüzü</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f7f8fa;
+        --card: #ffffff;
+        --border: #dfe3ea;
+        --text: #1f2937;
+        --muted: #6b7280;
+        --primary: #2563eb;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        background: linear-gradient(150deg, #f8fafc, #eef2ff);
+        color: var(--text);
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .panel {
+        width: min(860px, 100%);
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.09);
+        padding: 28px;
+      }
+
+      .panel h1 {
+        margin: 0 0 8px;
+        font-size: 1.55rem;
+      }
+
+      .panel p {
+        margin: 0;
+        color: var(--muted);
+      }
+
+      .grid {
+        margin-top: 22px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      .field {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 16px;
+        background: #fafbff;
+      }
+
+      .field h2 {
+        margin: 0 0 12px;
+        font-size: 1rem;
+      }
+
+      label {
+        display: block;
+        font-weight: 600;
+        font-size: 0.88rem;
+        margin-bottom: 8px;
+      }
+
+      input[type='color'],
+      select {
+        width: 100%;
+        border: 1px solid #c9d0dd;
+        border-radius: 10px;
+        padding: 10px;
+        background: white;
+        color: inherit;
+        font-size: 0.95rem;
+      }
+
+      input[type='color'] {
+        height: 44px;
+        padding: 4px;
+        cursor: pointer;
+      }
+
+      .preview {
+        margin-top: 18px;
+        border: 1px dashed #bcc6da;
+        border-radius: 14px;
+        padding: 14px;
+        display: grid;
+        gap: 6px;
+        background: #fcfdff;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        width: fit-content;
+        border: 1px solid #d5dbe8;
+        border-radius: 999px;
+        padding: 5px 10px;
+        font-size: 0.84rem;
+      }
+
+      .dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        border: 1px solid #9aa7be;
+      }
+
+      @media (max-width: 820px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="panel">
+      <h1>Ürün Seçim Arayüzü</h1>
+      <p>Renk seçimi, yolluk alanı seçimi ve ürün seçimini tek bir ekrandan yönetin.</p>
+
+      <section class="grid">
+        <article class="field">
+          <h2>Renk Seçimi</h2>
+          <label for="color">Renk belirleyin</label>
+          <input id="color" type="color" value="#2563eb" />
+        </article>
+
+        <article class="field">
+          <h2>Yolluk Alanı Seçimi</h2>
+          <label for="runner-area">Yolluk alanı</label>
+          <select id="runner-area">
+            <option value="A Bölgesi">A Bölgesi</option>
+            <option value="B Bölgesi">B Bölgesi</option>
+            <option value="C Bölgesi">C Bölgesi</option>
+            <option value="D Bölgesi">D Bölgesi</option>
+          </select>
+        </article>
+
+        <article class="field">
+          <h2>Ürün Seçimi</h2>
+          <label for="product">Ürün</label>
+          <select id="product">
+            <option value="Standart Kapak">Standart Kapak</option>
+            <option value="Premium Kapak">Premium Kapak</option>
+            <option value="İzolasyon Paneli">İzolasyon Paneli</option>
+            <option value="Hızlı Montaj Seti">Hızlı Montaj Seti</option>
+          </select>
+        </article>
+      </section>
+
+      <section class="preview" aria-live="polite">
+        <span class="badge">
+          <span class="dot" id="dot"></span>
+          <span id="selected-color">#2563eb</span>
+        </span>
+        <strong id="selected-area">Yolluk alanı: A Bölgesi</strong>
+        <strong id="selected-product">Ürün: Standart Kapak</strong>
+      </section>
+    </main>
+
+    <script>
+      const colorInput = document.querySelector('#color');
+      const areaSelect = document.querySelector('#runner-area');
+      const productSelect = document.querySelector('#product');
+      const dot = document.querySelector('#dot');
+      const colorText = document.querySelector('#selected-color');
+      const areaText = document.querySelector('#selected-area');
+      const productText = document.querySelector('#selected-product');
+
+      function renderSelection() {
+        dot.style.backgroundColor = colorInput.value;
+        colorText.textContent = colorInput.value;
+        areaText.textContent = `Yolluk alanı: ${areaSelect.value}`;
+        productText.textContent = `Ürün: ${productSelect.value}`;
+      }
+
+      colorInput.addEventListener('input', renderSelection);
+      areaSelect.addEventListener('change', renderSelection);
+      productSelect.addEventListener('change', renderSelection);
+
+      renderSelection();
+    </script>
+  </body>
+</html>
