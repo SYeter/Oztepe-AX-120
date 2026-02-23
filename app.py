@@ -15,6 +15,8 @@ class AppState:
     start_point: tuple[int, int] | None = None
     current_point: tuple[int, int] | None = None
     selected_bgr: tuple[int, int, int] | None = None
+    expected_count: int = 1
+    threshold_percent: int = 90
 
 
 @dataclass
@@ -53,12 +55,23 @@ def draw_button(frame: np.ndarray, rect: tuple[int, int, int, int], text: str, i
 
 
 def draw_ui_panel(frame: np.ndarray, state: AppState, buttons: UIButtons) -> None:
-    panel_h = 80
+    panel_h = 130
     cv2.rectangle(frame, (0, 0), (frame.shape[1], panel_h), (35, 35, 35), -1)
 
     draw_button(frame, buttons.yolluk_select, "Yolluk Alani Sec", state.selecting_roi == "yolluk")
     draw_button(frame, buttons.urun_select, "Urun Alani Sec", state.selecting_roi == "urun")
     draw_button(frame, buttons.color_select, "Renk Sec", state.selecting_color)
+
+    cv2.putText(frame, f"Beklenen Urun: {state.expected_count}", (15, 92),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(frame, f"Verim Esigi: %{state.threshold_percent}", (260, 92),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(frame, "Trackbar ile degerleri ayarla", (15, 118),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+
+
+def _noop(_: int) -> None:
+    return
 
 
 def on_mouse(event: int, x: int, y: int, flags: int, param: dict) -> None:
@@ -167,10 +180,8 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 
 def main() -> None:
     print("=== Enjeksiyon Makinesi Görüntü Kontrol Sistemi ===")
-    expected_count = int(input("Kalıptan çıkması gereken ürün sayısı: ").strip())
-    threshold_percent = float(input("Verim eşiği (%): ").strip())
 
-    cam_index = int(input("Kamera indeksi (genellikle 0): ").strip() or 0)
+    cam_index = int(input("Kamera indeksi (varsayılan 0): ").strip() or 0)
     cap = cv2.VideoCapture(cam_index)
 
     if not cap.isOpened():
@@ -185,6 +196,8 @@ def main() -> None:
     )
 
     cv2.namedWindow(WINDOW_NAME)
+    cv2.createTrackbar("Beklenen Urun", WINDOW_NAME, state.expected_count, 200, _noop)
+    cv2.createTrackbar("Verim Esigi (%)", WINDOW_NAME, state.threshold_percent, 100, _noop)
     cv2.setMouseCallback(WINDOW_NAME, on_mouse, {"state": state, "frame_ref": frame_ref, "buttons": buttons})
 
     print("\nKontroller:")
@@ -198,6 +211,9 @@ def main() -> None:
             break
 
         frame_ref["frame"] = frame.copy()
+        state.expected_count = max(cv2.getTrackbarPos("Beklenen Urun", WINDOW_NAME), 1)
+        state.threshold_percent = cv2.getTrackbarPos("Verim Esigi (%)", WINDOW_NAME)
+
         vis = frame.copy()
         draw_ui_panel(vis, state, buttons)
 
@@ -210,9 +226,9 @@ def main() -> None:
             cv2.putText(processed, f"Secili Renk (BGR): {state.selected_bgr}", (10, 25),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-        minimum_required = expected_count * (threshold_percent / 100.0)
+        minimum_required = state.expected_count * (state.threshold_percent / 100.0)
         signal = 1 if urun_sayisi < minimum_required else 0
-        cv2.putText(processed, f"Beklenen: {expected_count} | Esik: %{threshold_percent:.1f}", (10, 55),
+        cv2.putText(processed, f"Beklenen: {state.expected_count} | Esik: %{state.threshold_percent}", (10, 55),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
         cv2.putText(processed, f"Anlik urun: {urun_sayisi} | Cikis sinyali: {signal}", (10, 85),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255) if signal == 1 else (0, 255, 0), 2)
