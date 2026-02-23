@@ -9,11 +9,19 @@ WINDOW_NAME = "Enjeksiyon Kamera Kontrol"
 @dataclass
 class AppState:
     selecting_roi: str | None = None
+    selecting_color: bool = False
     yolluk_roi: tuple[int, int, int, int] | None = None
     urun_roi: tuple[int, int, int, int] | None = None
     start_point: tuple[int, int] | None = None
     current_point: tuple[int, int] | None = None
     selected_bgr: tuple[int, int, int] | None = None
+
+
+@dataclass
+class UIButtons:
+    yolluk_select: tuple[int, int, int, int]
+    urun_select: tuple[int, int, int, int]
+    color_select: tuple[int, int, int, int]
 
 
 def normalize_roi(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int, int, int]:
@@ -30,19 +38,60 @@ def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int
     cv2.putText(frame, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
 
+def point_in_rect(x: int, y: int, rect: tuple[int, int, int, int]) -> bool:
+    rx, ry, rw, rh = rect
+    return rx <= x <= rx + rw and ry <= y <= ry + rh
+
+
+def draw_button(frame: np.ndarray, rect: tuple[int, int, int, int], text: str, is_active: bool = False) -> None:
+    x, y, w, h = rect
+    fill = (90, 170, 90) if is_active else (70, 70, 70)
+    border = (180, 255, 180) if is_active else (170, 170, 170)
+    cv2.rectangle(frame, (x, y), (x + w, y + h), fill, -1)
+    cv2.rectangle(frame, (x, y), (x + w, y + h), border, 2)
+    cv2.putText(frame, text, (x + 10, y + int(h * 0.65)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+
+def draw_ui_panel(frame: np.ndarray, state: AppState, buttons: UIButtons) -> None:
+    panel_h = 80
+    cv2.rectangle(frame, (0, 0), (frame.shape[1], panel_h), (35, 35, 35), -1)
+
+    draw_button(frame, buttons.yolluk_select, "Yolluk Alani Sec", state.selecting_roi == "yolluk")
+    draw_button(frame, buttons.urun_select, "Urun Alani Sec", state.selecting_roi == "urun")
+    draw_button(frame, buttons.color_select, "Renk Sec", state.selecting_color)
+
+
 def on_mouse(event: int, x: int, y: int, flags: int, param: dict) -> None:
     state: AppState = param["state"]
     frame_ref: dict = param["frame_ref"]
+    buttons: UIButtons = param["buttons"]
 
     if event == cv2.EVENT_LBUTTONDOWN:
+        if point_in_rect(x, y, buttons.yolluk_select):
+            state.selecting_roi = "yolluk"
+            state.selecting_color = False
+            print("[Bilgi] Yolluk ROI seçimi aktif. Sol tık + sürükle bırak.")
+            return
+        if point_in_rect(x, y, buttons.urun_select):
+            state.selecting_roi = "urun"
+            state.selecting_color = False
+            print("[Bilgi] Ürün ROI seçimi aktif. Sol tık + sürükle bırak.")
+            return
+        if point_in_rect(x, y, buttons.color_select):
+            state.selecting_color = True
+            state.selecting_roi = None
+            print("[Bilgi] Renk seçimi aktif. Görüntüden bir piksele tıklayın.")
+            return
+
         if state.selecting_roi:
             state.start_point = (x, y)
             state.current_point = (x, y)
-        else:
+        elif state.selecting_color:
             frame = frame_ref.get("frame")
             if frame is not None and 0 <= y < frame.shape[0] and 0 <= x < frame.shape[1]:
                 b, g, r = frame[y, x]
                 state.selected_bgr = int(b), int(g), int(r)
+                state.selecting_color = False
                 print(f"[Bilgi] Renk seçildi (BGR): {state.selected_bgr}")
 
     elif event == cv2.EVENT_MOUSEMOVE and state.start_point is not None:
@@ -129,14 +178,17 @@ def main() -> None:
 
     state = AppState()
     frame_ref: dict[str, np.ndarray | None] = {"frame": None}
+    buttons = UIButtons(
+        yolluk_select=(15, 15, 180, 45),
+        urun_select=(210, 15, 180, 45),
+        color_select=(405, 15, 140, 45)
+    )
 
     cv2.namedWindow(WINDOW_NAME)
-    cv2.setMouseCallback(WINDOW_NAME, on_mouse, {"state": state, "frame_ref": frame_ref})
+    cv2.setMouseCallback(WINDOW_NAME, on_mouse, {"state": state, "frame_ref": frame_ref, "buttons": buttons})
 
     print("\nKontroller:")
-    print("- 'y': Yolluk alanı seç")
-    print("- 'u': Ürün algılama alanı seç")
-    print("- Sol tık: Renk seç (ROI seçimi modunda değilken)")
+    print("- Üstteki butonlardan yolluk/ürün alanı ve renk seçimi yap")
     print("- 'q': Çıkış")
 
     while True:
@@ -147,6 +199,7 @@ def main() -> None:
 
         frame_ref["frame"] = frame.copy()
         vis = frame.copy()
+        draw_ui_panel(vis, state, buttons)
 
         if state.start_point is not None and state.current_point is not None:
             cv2.rectangle(vis, state.start_point, state.current_point, (0, 165, 255), 2)
@@ -171,12 +224,6 @@ def main() -> None:
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
-        if key == ord('y'):
-            state.selecting_roi = "yolluk"
-            print("[Bilgi] Yolluk ROI seçimi aktif. Sol tık + sürükle bırak.")
-        if key == ord('u'):
-            state.selecting_roi = "urun"
-            print("[Bilgi] Ürün ROI seçimi aktif. Sol tık + sürükle bırak.")
 
     cap.release()
     cv2.destroyAllWindows()
