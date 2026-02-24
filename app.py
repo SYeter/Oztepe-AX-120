@@ -247,7 +247,7 @@ def main() -> None:
         threshold_input=(290, 126, 190, 36),
     )
 
-    cv2.namedWindow(WINDOW_NAME)
+    cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(WINDOW_NAME, on_mouse, {"state": state, "frame_ref": frame_ref, "buttons": buttons})
 
