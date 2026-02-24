@@ -17,6 +17,8 @@ class AppState:
     selected_bgr: tuple[int, int, int] | None = None
     expected_count: int = 1
     threshold_percent: int = 90
+    active_input: str | None = None
+    input_buffer: str = ""
 
 
 @dataclass
@@ -24,6 +26,8 @@ class UIButtons:
     yolluk_select: tuple[int, int, int, int]
     urun_select: tuple[int, int, int, int]
     color_select: tuple[int, int, int, int]
+    expected_input: tuple[int, int, int, int]
+    threshold_input: tuple[int, int, int, int]
 
 
 def normalize_roi(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int, int, int]:
@@ -47,31 +51,66 @@ def point_in_rect(x: int, y: int, rect: tuple[int, int, int, int]) -> bool:
 
 def draw_button(frame: np.ndarray, rect: tuple[int, int, int, int], text: str, is_active: bool = False) -> None:
     x, y, w, h = rect
-    fill = (90, 170, 90) if is_active else (70, 70, 70)
-    border = (180, 255, 180) if is_active else (170, 170, 170)
+    fill = (92, 121, 158) if is_active else (58, 64, 74)
+    border = (167, 205, 245) if is_active else (120, 126, 136)
     cv2.rectangle(frame, (x, y), (x + w, y + h), fill, -1)
     cv2.rectangle(frame, (x, y), (x + w, y + h), border, 2)
-    cv2.putText(frame, text, (x + 10, y + int(h * 0.65)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+    cv2.putText(frame, text, (x + 14, y + int(h * 0.63)), cv2.FONT_HERSHEY_SIMPLEX, 0.58, (240, 245, 250), 2)
+
+
+def draw_input(
+    frame: np.ndarray,
+    rect: tuple[int, int, int, int],
+    label: str,
+    value: str,
+    is_active: bool,
+) -> None:
+    x, y, w, h = rect
+    border_color = (181, 210, 244) if is_active else (116, 124, 138)
+    fill_color = (43, 47, 55)
+    cv2.putText(frame, label, (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (198, 204, 214), 1)
+    cv2.rectangle(frame, (x, y), (x + w, y + h), fill_color, -1)
+    cv2.rectangle(frame, (x, y), (x + w, y + h), border_color, 2)
+    cv2.putText(frame, value, (x + 10, y + int(h * 0.68)), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (247, 248, 250), 2)
 
 
 def draw_ui_panel(frame: np.ndarray, state: AppState, buttons: UIButtons) -> None:
-    panel_h = 130
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], panel_h), (35, 35, 35), -1)
+    panel_h = 185
+    cv2.rectangle(frame, (0, 0), (frame.shape[1], panel_h), (24, 27, 33), -1)
+    cv2.rectangle(frame, (0, panel_h), (frame.shape[1], panel_h + 4), (78, 87, 101), -1)
+
+    cv2.putText(frame, "ENJEKSIYON KAMERA KONTROL PANELI", (20, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.75, (220, 228, 237), 2)
+    cv2.putText(frame, "Alan secimi, renk tanimi ve kalite sinyal takibi", (20, 55),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.50, (162, 171, 184), 1)
 
     draw_button(frame, buttons.yolluk_select, "Yolluk Alani Sec", state.selecting_roi == "yolluk")
     draw_button(frame, buttons.urun_select, "Urun Alani Sec", state.selecting_roi == "urun")
     draw_button(frame, buttons.color_select, "Renk Sec", state.selecting_color)
 
-    cv2.putText(frame, f"Beklenen Urun: {state.expected_count}", (15, 92),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    cv2.putText(frame, f"Verim Esigi: %{state.threshold_percent}", (260, 92),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    cv2.putText(frame, "Trackbar ile degerleri ayarla", (15, 118),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
+    expected_text = state.input_buffer if state.active_input == "expected" else str(state.expected_count)
+    threshold_text = state.input_buffer if state.active_input == "threshold" else str(state.threshold_percent)
+    draw_input(frame, buttons.expected_input, "Beklenen Urun Adedi", expected_text, state.active_input == "expected")
+    draw_input(frame, buttons.threshold_input, "Verim Esigi (%)", threshold_text, state.active_input == "threshold")
+
+    cv2.putText(frame, "Ipuclari: Input kutusuna tiklayip rakam girin, Enter ile onaylayin.", (20, 172),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.48, (162, 171, 184), 1)
 
 
-def _noop(_: int) -> None:
-    return
+def commit_active_input(state: AppState) -> None:
+    if state.active_input is None:
+        return
+
+    if state.input_buffer:
+        numeric_value = int(state.input_buffer)
+        if state.active_input == "expected":
+            state.expected_count = max(1, min(999, numeric_value))
+        elif state.active_input == "threshold":
+            state.threshold_percent = max(0, min(100, numeric_value))
+
+    state.active_input = None
+    state.input_buffer = ""
+
 
 
 def on_mouse(event: int, x: int, y: int, flags: int, param: dict) -> None:
@@ -80,6 +119,17 @@ def on_mouse(event: int, x: int, y: int, flags: int, param: dict) -> None:
     buttons: UIButtons = param["buttons"]
 
     if event == cv2.EVENT_LBUTTONDOWN:
+        if point_in_rect(x, y, buttons.expected_input):
+            state.active_input = "expected"
+            state.input_buffer = str(state.expected_count)
+            return
+        if point_in_rect(x, y, buttons.threshold_input):
+            state.active_input = "threshold"
+            state.input_buffer = str(state.threshold_percent)
+            return
+
+        commit_active_input(state)
+
         if point_in_rect(x, y, buttons.yolluk_select):
             state.selecting_roi = "yolluk"
             state.selecting_color = False
@@ -190,18 +240,20 @@ def main() -> None:
     state = AppState()
     frame_ref: dict[str, np.ndarray | None] = {"frame": None}
     buttons = UIButtons(
-        yolluk_select=(15, 15, 180, 45),
-        urun_select=(210, 15, 180, 45),
-        color_select=(405, 15, 140, 45)
+        yolluk_select=(20, 70, 210, 46),
+        urun_select=(250, 70, 210, 46),
+        color_select=(480, 70, 170, 46),
+        expected_input=(20, 126, 250, 36),
+        threshold_input=(290, 126, 190, 36),
     )
 
     cv2.namedWindow(WINDOW_NAME)
-    cv2.createTrackbar("Beklenen Urun", WINDOW_NAME, state.expected_count, 200, _noop)
-    cv2.createTrackbar("Verim Esigi (%)", WINDOW_NAME, state.threshold_percent, 100, _noop)
+    cv2.setWindowProperty(WINDOW_NAME, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
     cv2.setMouseCallback(WINDOW_NAME, on_mouse, {"state": state, "frame_ref": frame_ref, "buttons": buttons})
 
     print("\nKontroller:")
     print("- Üstteki butonlardan yolluk/ürün alanı ve renk seçimi yap")
+    print("- Beklenen ürün ve verim eşiği değerlerini input kutusuna tıklayıp gir")
     print("- 'q': Çıkış")
 
     while True:
@@ -211,9 +263,6 @@ def main() -> None:
             break
 
         frame_ref["frame"] = frame.copy()
-        state.expected_count = max(cv2.getTrackbarPos("Beklenen Urun", WINDOW_NAME), 1)
-        state.threshold_percent = cv2.getTrackbarPos("Verim Esigi (%)", WINDOW_NAME)
-
         vis = frame.copy()
         draw_ui_panel(vis, state, buttons)
 
@@ -238,8 +287,22 @@ def main() -> None:
         cv2.imshow(WINDOW_NAME, processed)
 
         key = cv2.waitKey(1) & 0xFF
+        if state.active_input is not None:
+            if ord("0") <= key <= ord("9"):
+                candidate = f"{state.input_buffer}{chr(key)}".lstrip("0")
+                state.input_buffer = candidate or "0"
+            elif key in (8, 127):
+                state.input_buffer = state.input_buffer[:-1]
+            elif key in (13, 10):
+                commit_active_input(state)
+            elif key == 27:
+                state.active_input = None
+                state.input_buffer = ""
+
         if key == ord('q'):
             break
+
+    commit_active_input(state)
 
     cap.release()
     cv2.destroyAllWindows()
