@@ -5,21 +5,22 @@ Bu proje, enjeksiyon makinelerinde:
 - **Ürün algılama ve sayım**
 - **Verim eşiğine göre 1/0 sinyal üretimi**
 
-işlemlerini Python + OpenCV ile gerçek zamanlı olarak yapar.
+işlemlerini **Python + OpenCV + PyQt5** ile gerçek zamanlı olarak yapar.
 
 ## Özellikler
-- Mouse ile kullanıcı tanımlı **yolluk ROI** ve **ürün ROI** alanları.
-- Ekrandan tıklayarak **algılanacak rengin seçilmesi**.
-- Renk tabanlı görüntü işleme ile ürün sayımı.
+- Modern, koyu temalı **PyQt5 masaüstü arayüzü**.
+- Görüntü üzerinden sürükle-bırak ile **yolluk ROI** ve **ürün ROI** seçimi.
+- Piksel tıklaması ile **renk seçimi**.
+- Canlı metrik kartları:
+  - Seçili renk
+  - Anlık ürün sayısı
+  - Çıkış sinyali (1/0)
+  - Yolluk durumu
 - Kullanıcının belirlediği **beklenen ürün adedi** ve **verim eşiği (%)** ile karar:
   - `ürün_sayısı < beklenen * (eşik/100)` ise **çıkış sinyali = 1**
   - aksi durumda **çıkış sinyali = 0**
 
-## Kurulum (PyCharm ile uyumlu)
-1. Projeyi PyCharm ile açın.
-2. `Python 3.10+` interpreter seçin.
-3. Terminalden bağımlılıkları kurun:
-
+## Kurulum
 ```bash
 pip install -r requirements.txt
 ```
@@ -29,17 +30,15 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Program başlangıcında sizden şunları ister:
-- Kalıptan çıkması gereken ürün sayısı
-- Verim eşiği (%)
-- Kamera indeksi (genelde `0`)
+Program başlangıcında kamera indeksi ister (`0` varsayılan).
 
-## Klavye ve Mouse Kontrolleri
-- `y` : Yolluk alanı (ROI) seçimini başlatır
-- `u` : Ürün algılama alanı (ROI) seçimini başlatır
-- **Sol tık (ROI modu kapalıyken)** : Algılanacak rengi seçer
-- `q` : Uygulamadan çıkar
+## Arayüz Kullanımı
+1. **Yolluk Alanı Seç** veya **Ürün Alanı Seç** butonuna tıklayın.
+2. Kamera görüntüsü üzerinde sürükleyip bırakarak ROI tanımlayın.
+3. **Renk Seç** ile tespit edilecek rengi görüntüden seçin.
+4. Beklenen adet ve eşik değerlerini girip **Değerleri Uygula** deyin.
+5. Sonuçları soldaki canlı kartlardan takip edin.
 
 ## Notlar
-- Farklı aydınlatma koşullarında renk toleransı için `app.py` içindeki `build_mask_by_selected_color` fonksiyonundaki tolerans değeri ayarlanabilir.
-- Kameraya erişim sorunu varsa işletim sistemi kamera izinlerini kontrol edin.
+- Aydınlatma değişimlerinde renk toleransı için `build_mask_by_selected_color` fonksiyonundaki `tol` değeri güncellenebilir.
+- Kamera erişim sorunu varsa işletim sistemi izinlerini kontrol edin.
