@@ -34,7 +34,7 @@ class AppState:
 
 
 class VideoLabel(QLabel):
-    """Kamera görüntüsü üstünde ROI ve renk seçimi için tıklama/drag desteği."""
+    """Kamera goruntusu ustunde ROI ve renk secimi icin tiklama/drag destegi."""
 
     def __init__(self, parent: "MainWindow") -> None:
         super().__init__(parent)
@@ -55,30 +55,38 @@ class VideoLabel(QLabel):
         if event.button() != Qt.LeftButton:
             return
 
-        x, y = event.x(), event.y()
+        point = self.main_window.map_label_to_frame(event.x(), event.y())
+        if point is None:
+            return
+
         if self.main_window.selection_mode in ("yolluk", "urun"):
-            self.start_point = (x, y)
-            self.current_point = (x, y)
+            self.start_point = point
+            self.current_point = point
             return
 
         if self.main_window.selection_mode == "color":
-            self.main_window.pick_color_at(x, y)
+            self.main_window.pick_color_at(*point)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         if self.start_point is not None:
-            self.current_point = (event.x(), event.y())
+            point = self.main_window.map_label_to_frame(event.x(), event.y())
+            if point is not None:
+                self.current_point = point
 
     def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
         if self.start_point is None:
             return
 
-        end = (event.x(), event.y())
+        end = self.main_window.map_label_to_frame(event.x(), event.y())
+        if end is None:
+            end = self.current_point if self.current_point is not None else self.start_point
+
         roi = normalize_roi(self.start_point, end)
         self.start_point = None
         self.current_point = None
 
         if roi[2] < 10 or roi[3] < 10:
-            self.main_window.update_status("⚠️ Geçersiz ROI: daha büyük bir alan seçin.")
+            self.main_window.update_status("⚠️ Gecersiz ROI: daha buyuk bir alan secin.")
             self.main_window.selection_mode = None
             return
 
@@ -96,19 +104,19 @@ class MainWindow(QWidget):
 
         self.cap = cv2.VideoCapture(cam_index)
         if not self.cap.isOpened():
-            raise RuntimeError("Kamera açılamadı. Kamera indeksi veya erişim yetkisini kontrol edin.")
+            raise RuntimeError("Kamera acilamadi. Kamera indeksi veya erisim yetkisini kontrol edin.")
 
         self.video_label = VideoLabel(self)
 
-        self.status_label = QLabel("Hazır. ROI veya renk seçimi için aşağıdaki butonları kullanın.")
+        self.status_label = QLabel("Hazir. ROI veya renk secimi icin asagidaki butonlari kullanin.")
         self.status_label.setObjectName("status")
 
         self.expected_input = QLineEdit("1")
         self.threshold_input = QLineEdit("90")
 
-        self.metric_selected_color = QLabel("Seçili Renk (BGR): -")
-        self.metric_count = QLabel("Anlık Ürün: 0")
-        self.metric_signal = QLabel("Çıkış Sinyali: 0")
+        self.metric_selected_color = QLabel("Secili Renk (BGR): -")
+        self.metric_count = QLabel("Anlik Urun: 0")
+        self.metric_signal = QLabel("Cikis Sinyali: 0")
         self.metric_yolluk = QLabel("Yolluk: YOK")
 
         self.init_ui()
@@ -162,12 +170,12 @@ class MainWindow(QWidget):
             """
         )
 
-        roi_group = QGroupBox("Alan ve Renk Seçimi")
+        roi_group = QGroupBox("Alan ve Renk Secimi")
         roi_layout = QHBoxLayout()
 
-        yolluk_btn = QPushButton("Yolluk Alanı Seç")
-        urun_btn = QPushButton("Ürün Alanı Seç")
-        color_btn = QPushButton("Renk Seç")
+        yolluk_btn = QPushButton("Yolluk Alani Sec")
+        urun_btn = QPushButton("Urun Alani Sec")
+        color_btn = QPushButton("Renk Sec")
 
         yolluk_btn.clicked.connect(lambda: self.activate_mode("yolluk"))
         urun_btn.clicked.connect(lambda: self.activate_mode("urun"))
@@ -178,19 +186,19 @@ class MainWindow(QWidget):
         roi_layout.addWidget(color_btn)
         roi_group.setLayout(roi_layout)
 
-        settings_group = QGroupBox("Üretim Parametreleri")
+        settings_group = QGroupBox("Uretim Parametreleri")
         settings_layout = QGridLayout()
-        settings_layout.addWidget(QLabel("Beklenen Ürün Adedi"), 0, 0)
+        settings_layout.addWidget(QLabel("Beklenen Urun Adedi"), 0, 0)
         settings_layout.addWidget(self.expected_input, 0, 1)
-        settings_layout.addWidget(QLabel("Verim Eşiği (%)"), 1, 0)
+        settings_layout.addWidget(QLabel("Verim Esigi (%)"), 1, 0)
         settings_layout.addWidget(self.threshold_input, 1, 1)
 
-        apply_btn = QPushButton("Değerleri Uygula")
+        apply_btn = QPushButton("Degerleri Uygula")
         apply_btn.clicked.connect(self.apply_inputs)
         settings_layout.addWidget(apply_btn, 0, 2, 2, 1)
         settings_group.setLayout(settings_layout)
 
-        metrics_group = QGroupBox("Canlı Sonuçlar")
+        metrics_group = QGroupBox("Canli Sonuclar")
         metrics_layout = QVBoxLayout()
         for metric in [self.metric_selected_color, self.metric_count, self.metric_signal, self.metric_yolluk]:
             card = QFrame()
@@ -230,7 +238,7 @@ class MainWindow(QWidget):
             expected = int(self.expected_input.text())
             threshold = int(self.threshold_input.text())
         except ValueError:
-            QMessageBox.warning(self, "Hatalı Giriş", "Lütfen sadece sayısal değer girin.")
+            QMessageBox.warning(self, "Hatali Giris", "Lutfen sadece sayisal deger girin.")
             return
 
         self.state.expected_count = max(1, min(999, expected))
@@ -238,25 +246,50 @@ class MainWindow(QWidget):
 
         self.expected_input.setText(str(self.state.expected_count))
         self.threshold_input.setText(str(self.state.threshold_percent))
-        self.update_status("✅ Parametreler güncellendi.")
+        self.update_status("✅ Parametreler guncellendi.")
 
     def activate_mode(self, mode: str) -> None:
         self.selection_mode = mode
         messages = {
-            "yolluk": "Yolluk ROI modu aktif. Görüntü üzerinde sürükleyerek alan seçin.",
-            "urun": "Ürün ROI modu aktif. Görüntü üzerinde sürükleyerek alan seçin.",
-            "color": "Renk seçimi aktif. Görüntüde bir piksele tıklayın.",
+            "yolluk": "Yolluk ROI modu aktif. Goruntu uzerinde surukleyerek alan secin.",
+            "urun": "Urun ROI modu aktif. Goruntu uzerinde surukleyerek alan secin.",
+            "color": "Renk secimi aktif. Goruntude bir piksele tiklayin.",
         }
-        self.update_status(messages.get(mode, "Mod değiştirildi."))
+        self.update_status(messages.get(mode, "Mod degistirildi."))
 
     def assign_roi(self, roi: tuple[int, int, int, int]) -> None:
         if self.selection_mode == "yolluk":
             self.state.yolluk_roi = roi
-            self.update_status(f"✅ Yolluk alanı tanımlandı: {roi}")
+            self.update_status(f"✅ Yolluk alani tanimlandi: {roi}")
         elif self.selection_mode == "urun":
             self.state.urun_roi = roi
-            self.update_status(f"✅ Ürün alanı tanımlandı: {roi}")
+            self.update_status(f"✅ Urun alani tanimlandi: {roi}")
         self.selection_mode = None
+
+    def map_label_to_frame(self, x: int, y: int) -> tuple[int, int] | None:
+        if self.current_frame is None:
+            return None
+
+        frame_h, frame_w = self.current_frame.shape[:2]
+        label_w = self.video_label.width()
+        label_h = self.video_label.height()
+        if frame_w <= 0 or frame_h <= 0 or label_w <= 0 or label_h <= 0:
+            return None
+
+        scale = min(label_w / frame_w, label_h / frame_h)
+        draw_w = frame_w * scale
+        draw_h = frame_h * scale
+        offset_x = (label_w - draw_w) / 2.0
+        offset_y = (label_h - draw_h) / 2.0
+
+        if x < offset_x or y < offset_y or x > offset_x + draw_w or y > offset_y + draw_h:
+            return None
+
+        frame_x = int((x - offset_x) / scale)
+        frame_y = int((y - offset_y) / scale)
+        frame_x = max(0, min(frame_w - 1, frame_x))
+        frame_y = max(0, min(frame_h - 1, frame_y))
+        return frame_x, frame_y
 
     def pick_color_at(self, x: int, y: int) -> None:
         if self.current_frame is None:
@@ -266,8 +299,8 @@ class MainWindow(QWidget):
 
         b, g, r = self.current_frame[y, x]
         self.state.selected_bgr = (int(b), int(g), int(r))
-        self.metric_selected_color.setText(f"Seçili Renk (BGR): {self.state.selected_bgr}")
-        self.update_status(f"✅ Renk seçildi: {self.state.selected_bgr}")
+        self.metric_selected_color.setText(f"Secili Renk (BGR): {self.state.selected_bgr}")
+        self.update_status(f"✅ Renk secildi: {self.state.selected_bgr}")
         self.selection_mode = None
 
     def update_status(self, message: str) -> None:
@@ -276,7 +309,7 @@ class MainWindow(QWidget):
     def update_frame(self) -> None:
         ret, frame = self.cap.read()
         if not ret:
-            self.update_status("❌ Kameradan görüntü alınamadı.")
+            self.update_status("❌ Kameradan goruntu alinamadi.")
             return
 
         self.current_frame = frame.copy()
@@ -289,8 +322,8 @@ class MainWindow(QWidget):
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 1 if urun_sayisi < minimum_required else 0
 
-        self.metric_count.setText(f"Anlık Ürün: {urun_sayisi} | Beklenen: {self.state.expected_count}")
-        self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Eşik: %{self.state.threshold_percent}")
+        self.metric_count.setText(f"Anlik Urun: {urun_sayisi} | Beklenen: {self.state.expected_count}")
+        self.metric_signal.setText(f"Cikis Sinyali: {signal} | Esik: %{self.state.threshold_percent}")
         self.metric_signal.setStyleSheet(f"color: {'#ff6f6f' if signal else '#66df8f'};")
         self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'}")
 
@@ -341,7 +374,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         if state.yolluk_roi:
             draw_roi(debug, state.yolluk_roi, (255, 0, 0), "Yolluk")
         if state.urun_roi:
-            draw_roi(debug, state.urun_roi, (0, 255, 0), "Ürün")
+            draw_roi(debug, state.urun_roi, (0, 255, 0), "Urun")
         return 0, False, debug
 
     mask = build_mask_by_selected_color(frame, state.selected_bgr)
@@ -371,13 +404,13 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
                 bx, by, bw, bh = cv2.boundingRect(cnt)
                 cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (0, 255, 255), 2)
 
-        draw_roi(debug, state.urun_roi, (0, 255, 0), f"Ürün Sayısı: {urun_sayisi}")
+        draw_roi(debug, state.urun_roi, (0, 255, 0), f"Urun Sayisi: {urun_sayisi}")
 
     return urun_sayisi, yolluk_var, debug
 
 
 def main() -> None:
-    cam_text = input("Kamera indeksi (varsayılan 0): ").strip() or "0"
+    cam_text = input("Kamera indeksi (varsayilan 0): ").strip() or "0"
     cam_index = int(cam_text)
 
     app = QApplication(sys.argv)
