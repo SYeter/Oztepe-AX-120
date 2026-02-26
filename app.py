@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 
 WINDOW_NAME = "Enjeksiyon Kamera Kontrol"
+UI_PANEL_HEIGHT = 185
 
 
 @dataclass
@@ -75,9 +76,8 @@ def draw_input(
 
 
 def draw_ui_panel(frame: np.ndarray, state: AppState, buttons: UIButtons) -> None:
-    panel_h = 185
-    cv2.rectangle(frame, (0, 0), (frame.shape[1], panel_h), (24, 27, 33), -1)
-    cv2.rectangle(frame, (0, panel_h), (frame.shape[1], panel_h + 4), (78, 87, 101), -1)
+    cv2.rectangle(frame, (0, 0), (frame.shape[1], UI_PANEL_HEIGHT), (24, 27, 33), -1)
+    cv2.rectangle(frame, (0, UI_PANEL_HEIGHT), (frame.shape[1], UI_PANEL_HEIGHT + 4), (78, 87, 101), -1)
 
     cv2.putText(frame, "ENJEKSIYON KAMERA KONTROL PANELI", (20, 30),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.75, (220, 228, 237), 2)
@@ -271,17 +271,20 @@ def main() -> None:
 
         urun_sayisi, yolluk_var, processed = count_products_and_yolluk(vis, state)
 
+        info_base_y = UI_PANEL_HEIGHT + 28
+        info_line_gap = 30
+
         if state.selected_bgr is not None:
-            cv2.putText(processed, f"Secili Renk (BGR): {state.selected_bgr}", (10, 25),
+            cv2.putText(processed, f"Secili Renk (BGR): {state.selected_bgr}", (10, info_base_y),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
         minimum_required = state.expected_count * (state.threshold_percent / 100.0)
         signal = 1 if urun_sayisi < minimum_required else 0
-        cv2.putText(processed, f"Beklenen: {state.expected_count} | Esik: %{state.threshold_percent}", (10, 55),
+        cv2.putText(processed, f"Beklenen: {state.expected_count} | Esik: %{state.threshold_percent}", (10, info_base_y + info_line_gap),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 255, 255), 2)
-        cv2.putText(processed, f"Anlik urun: {urun_sayisi} | Cikis sinyali: {signal}", (10, 85),
+        cv2.putText(processed, f"Anlik urun: {urun_sayisi} | Cikis sinyali: {signal}", (10, info_base_y + (2 * info_line_gap)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 0, 255) if signal == 1 else (0, 255, 0), 2)
-        cv2.putText(processed, f"Yolluk: {'VAR' if yolluk_var else 'YOK'}", (10, 115),
+        cv2.putText(processed, f"Yolluk: {'VAR' if yolluk_var else 'YOK'}", (10, info_base_y + (3 * info_line_gap)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.65, (255, 0, 0), 2)
 
         cv2.imshow(WINDOW_NAME, processed)
