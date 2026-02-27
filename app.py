@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
 )
 
 WINDOW_TITLE = "Enjeksiyon Kamera Kontrol"
+RTSP_URL = "rtsp://admin:Plinsan24@192.168.1.108:554/cam/realmonitor?channel=1&subtype=0"
 
 
 @dataclass
@@ -95,7 +96,7 @@ class VideoLabel(QLabel):
 
 
 class MainWindow(QWidget):
-    def __init__(self, cam_index: int) -> None:
+    def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
 
@@ -103,9 +104,9 @@ class MainWindow(QWidget):
         self.selection_mode: str | None = None
         self.current_frame: np.ndarray | None = None
 
-        self.cap = cv2.VideoCapture(cam_index)
+        self.cap = cv2.VideoCapture(RTSP_URL, cv2.CAP_FFMPEG)
         if not self.cap.isOpened():
-            raise RuntimeError("Kamera acilamadi. Kamera indeksi veya erisim yetkisini kontrol edin.")
+            raise RuntimeError("RTSP yayini acilamadi. URL bilgisini veya erisim yetkisini kontrol edin.")
 
         self.video_label = VideoLabel(self)
 
@@ -477,11 +478,8 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 
 
 def main() -> None:
-    cam_text = input("Kamera indeksi (varsayilan 0): ").strip() or "0"
-    cam_index = int(cam_text)
-
     app = QApplication(sys.argv)
-    window = MainWindow(cam_index)
+    window = MainWindow()
     window.showMaximized()
     sys.exit(app.exec_())
 
