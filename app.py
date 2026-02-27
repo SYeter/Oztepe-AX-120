@@ -29,6 +29,7 @@ class AppState:
     yolluk_roi: tuple[int, int, int, int] | None = None
     urun_roi: tuple[int, int, int, int] | None = None
     selected_bgr: tuple[int, int, int] | None = None
+    selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] | None = None
     expected_count: int = 1
     threshold_percent: int = 90
 
@@ -59,13 +60,10 @@ class VideoLabel(QLabel):
         if point is None:
             return
 
-        if self.main_window.selection_mode in ("yolluk", "urun"):
+        if self.main_window.selection_mode in ("yolluk", "urun", "color"):
             self.start_point = point
             self.current_point = point
             return
-
-        if self.main_window.selection_mode == "color":
-            self.main_window.pick_color_at(*point)
 
     def mouseMoveEvent(self, event) -> None:  # type: ignore[override]
         if self.start_point is not None:
@@ -90,7 +88,10 @@ class VideoLabel(QLabel):
             self.main_window.selection_mode = None
             return
 
-        self.main_window.assign_roi(roi)
+        if self.main_window.selection_mode == "color":
+            self.main_window.pick_color_from_roi(roi)
+        else:
+            self.main_window.assign_roi(roi)
 
 
 class MainWindow(QWidget):
@@ -253,7 +254,7 @@ class MainWindow(QWidget):
         messages = {
             "yolluk": "Yolluk ROI modu aktif. Goruntu uzerinde surukleyerek alan secin.",
             "urun": "Urun ROI modu aktif. Goruntu uzerinde surukleyerek alan secin.",
-            "color": "Renk secimi aktif. Goruntude bir piksele tiklayin.",
+            "color": "Renk secimi aktif. Goruntude surukleyerek bir alan secin.",
         }
         self.update_status(messages.get(mode, "Mod degistirildi."))
 
@@ -291,16 +292,34 @@ class MainWindow(QWidget):
         frame_y = max(0, min(frame_h - 1, frame_y))
         return frame_x, frame_y
 
-    def pick_color_at(self, x: int, y: int) -> None:
+    def pick_color_from_roi(self, roi: tuple[int, int, int, int]) -> None:
         if self.current_frame is None:
             return
-        if not (0 <= y < self.current_frame.shape[0] and 0 <= x < self.current_frame.shape[1]):
+
+        x, y, w, h = roi
+        h_frame, w_frame = self.current_frame.shape[:2]
+        x = max(0, min(x, w_frame - 1))
+        y = max(0, min(y, h_frame - 1))
+        w = max(1, min(w, w_frame - x))
+        h = max(1, min(h, h_frame - y))
+
+        selected_area = self.current_frame[y:y + h, x:x + w]
+        if selected_area.size == 0:
+            self.update_status("⚠️ Renk alani secilemedi. Tekrar deneyin.")
             return
 
-        b, g, r = self.current_frame[y, x]
-        self.state.selected_bgr = (int(b), int(g), int(r))
+        mean_bgr = selected_area.reshape(-1, 3).mean(axis=0)
+        self.state.selected_bgr = tuple(int(c) for c in mean_bgr)
+        self.state.selected_hsv_ranges = extract_hsv_ranges_from_roi(selected_area)
+
+        if not self.state.selected_hsv_ranges:
+            self.state.selected_hsv_ranges = None
+            self.update_status("⚠️ Secilen alanda ayirt edilebilir renk bulunamadi. Daha canli bir alan secin.")
+            self.selection_mode = None
+            return
+
         self.metric_selected_color.setText(f"Secili Renk (BGR): {self.state.selected_bgr}")
-        self.update_status(f"✅ Renk secildi: {self.state.selected_bgr}")
+        self.update_status(f"✅ Renk alani secildi: {roi}. Benzer tonlar takip edilecek.")
         self.selection_mode = None
 
     def update_status(self, message: str) -> None:
@@ -320,11 +339,11 @@ class MainWindow(QWidget):
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
 
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
-        signal = 1 if urun_sayisi < minimum_required else 0
+        signal = 0 if urun_sayisi < minimum_required else 1
 
         self.metric_count.setText(f"Anlik Urun: {urun_sayisi} | Beklenen: {self.state.expected_count}")
         self.metric_signal.setText(f"Cikis Sinyali: {signal} | Esik: %{self.state.threshold_percent}")
-        self.metric_signal.setStyleSheet(f"color: {'#ff6f6f' if signal else '#66df8f'};")
+        self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
         self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'}")
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
@@ -355,29 +374,77 @@ def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int
     cv2.putText(frame, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
 
-def build_mask_by_selected_color(frame: np.ndarray, selected_bgr: tuple[int, int, int], tol: int = 35) -> np.ndarray:
+def build_mask_by_selected_color(
+    frame: np.ndarray,
+    selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
+) -> np.ndarray:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-    color_pixel = np.uint8([[selected_bgr]])
-    selected_hsv = cv2.cvtColor(color_pixel, cv2.COLOR_BGR2HSV)[0][0]
 
-    h, s, v = [int(c) for c in selected_hsv]
+    mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+    for lower_t, upper_t in selected_hsv_ranges:
+        lower = np.array(lower_t, dtype=np.uint8)
+        upper = np.array(upper_t, dtype=np.uint8)
+        mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower, upper))
 
-    lower = np.array([max(h - tol, 0), max(s - 70, 30), max(v - 70, 30)])
-    upper = np.array([min(h + tol, 179), min(s + 70, 255), min(v + 70, 255)])
+    return mask
 
-    return cv2.inRange(hsv, lower, upper)
+
+def extract_hsv_ranges_from_roi(
+    roi_bgr: np.ndarray,
+    sat_min: int = 35,
+    val_min: int = 35,
+    hue_padding: int = 6,
+) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
+    hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
+    pixels = hsv.reshape(-1, 3)
+    colorful = pixels[(pixels[:, 1] >= sat_min) & (pixels[:, 2] >= val_min)]
+    if colorful.size == 0:
+        colorful = pixels
+
+    hues = colorful[:, 0].astype(np.int32)
+    hist = np.bincount(hues, minlength=180)
+    active_hues = np.where(hist >= max(3, int(hist.max() * 0.2)))[0]
+    if active_hues.size == 0:
+        return []
+
+    sat_low = int(np.percentile(colorful[:, 1], 10))
+    sat_high = int(np.percentile(colorful[:, 1], 98))
+    val_low = int(np.percentile(colorful[:, 2], 10))
+    val_high = int(np.percentile(colorful[:, 2], 98))
+
+    ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] = []
+    sorted_hues = np.sort(active_hues)
+    segment_start = int(sorted_hues[0])
+    prev = int(sorted_hues[0])
+
+    for hue in sorted_hues[1:]:
+        h = int(hue)
+        if h != prev + 1:
+            ranges.append((
+                (max(segment_start - hue_padding, 0), max(sat_low - 20, 20), max(val_low - 20, 20)),
+                (min(prev + hue_padding, 179), min(sat_high + 20, 255), min(val_high + 20, 255)),
+            ))
+            segment_start = h
+        prev = h
+
+    ranges.append((
+        (max(segment_start - hue_padding, 0), max(sat_low - 20, 20), max(val_low - 20, 20)),
+        (min(prev + hue_padding, 179), min(sat_high + 20, 255), min(val_high + 20, 255)),
+    ))
+
+    return ranges
 
 
 def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, bool, np.ndarray]:
     debug = frame.copy()
-    if state.selected_bgr is None:
+    if state.selected_hsv_ranges is None:
         if state.yolluk_roi:
             draw_roi(debug, state.yolluk_roi, (255, 0, 0), "Yolluk")
         if state.urun_roi:
             draw_roi(debug, state.urun_roi, (0, 255, 0), "Urun")
         return 0, False, debug
 
-    mask = build_mask_by_selected_color(frame, state.selected_bgr)
+    mask = build_mask_by_selected_color(frame, state.selected_hsv_ranges)
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
