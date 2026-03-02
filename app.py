@@ -88,7 +88,7 @@ class VideoLabel(QLabel):
         self.start_point: tuple[int, int] | None = None
         self.current_point: tuple[int, int] | None = None
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(480, 270)
+        self.setMinimumSize(460, 260)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(
             "QLabel {"
@@ -276,20 +276,20 @@ class MainWindow(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setMinimumWidth(420)
+        left_scroll.setMinimumWidth(400)
         left_scroll.setWidget(left_panel)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_scroll)
         splitter.addWidget(self.video_label)
-        splitter.setSizes([460, 920])
+        splitter.setSizes([440, 880])
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 7)
 
         root = QHBoxLayout()
         root.addWidget(splitter)
         self.setLayout(root)
-        self.resize(1200, 700)
+        self.resize(1160, 680)
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -405,7 +405,11 @@ class MainWindow(QWidget):
 
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 0 if urun_sayisi < minimum_required else 1
-        if signal:
+
+        if yolluk_var:
+            signal = 0
+            STM32Serial.STM32Serial(chr(0))
+        elif signal:
             STM32Serial.STM32Serial(chr(1))
         else:
             STM32Serial.STM32Serial(chr(0))
@@ -567,7 +571,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 def main() -> None:
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.showFullScreen()
+    window.show()
     sys.exit(app.exec_())
 
 
