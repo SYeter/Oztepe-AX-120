@@ -169,6 +169,7 @@ class MainWindow(QWidget):
         self.metric_yolluk = QLabel("Yolluk: YOK")
 
         self.init_ui()
+        self.setup_fullscreen_behavior()
         self.start_timer()
 
     def init_ui(self) -> None:
@@ -290,6 +291,18 @@ class MainWindow(QWidget):
         root.addWidget(splitter)
         self.setLayout(root)
         self.resize(1160, 680)
+
+    def setup_fullscreen_behavior(self) -> None:
+        """Uygulama her zaman gercek tam ekran modunda kalsin."""
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            screen.geometryChanged.connect(self.handle_screen_geometry_change)
+
+        QTimer.singleShot(0, self.showFullScreen)
+
+    def handle_screen_geometry_change(self, _geometry) -> None:
+        if self.isVisible():
+            self.showFullScreen()
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
