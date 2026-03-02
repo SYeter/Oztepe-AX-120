@@ -176,7 +176,7 @@ class MainWindow(QWidget):
             QWidget {
                 background-color: #0f141d;
                 color: #e9eef8;
-                font-size: 13px;
+                font-size: 12px;
             }
             QGroupBox {
                 border: 1px solid #2d3a4f;
@@ -196,7 +196,7 @@ class MainWindow(QWidget):
                 background-color: #28364c;
                 border: 1px solid #3d5374;
                 border-radius: 10px;
-                padding: 10px;
+                padding: 8px;
                 font-weight: bold;
             }
             QPushButton:hover { background-color: #324666; }
@@ -212,7 +212,7 @@ class MainWindow(QWidget):
                 background-color: #182437;
                 border: 1px solid #2c466e;
                 border-radius: 8px;
-                padding: 10px;
+                padding: 8px;
                 color: #cfe1ff;
             }
             """
@@ -275,20 +275,20 @@ class MainWindow(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setMinimumWidth(520)
+        left_scroll.setMinimumWidth(420)
         left_scroll.setWidget(left_panel)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_scroll)
         splitter.addWidget(self.video_label)
-        splitter.setSizes([620, 860])
-        splitter.setStretchFactor(0, 4)
-        splitter.setStretchFactor(1, 6)
+        splitter.setSizes([460, 920])
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 7)
 
         root = QHBoxLayout()
         root.addWidget(splitter)
         self.setLayout(root)
-        self.resize(1280, 720)
+        self.resize(1200, 700)
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -521,14 +521,22 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         x, y, w, h = state.yolluk_roi
         yolluk_mask = mask[y:y + h, x:x + w]
         if yolluk_mask.size > 0:
-            area_ratio = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
-            yolluk_var = area_ratio > 0.03
             contours, _ = cv2.findContours(yolluk_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            toplam_kutu_alani = 0
+            min_kontur_alani = 60
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area > 120:
+                if area > min_kontur_alani:
                     bx, by, bw, bh = cv2.boundingRect(cnt)
+                    toplam_kutu_alani += bw * bh
                     cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (255, 140, 0), 2)
+
+            referans_kutu_alani = state.single_product_area if state.single_product_area and state.single_product_area > 0 else 0
+            if referans_kutu_alani > 0:
+                yolluk_var = toplam_kutu_alani >= referans_kutu_alani
+            else:
+                alan_orani = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
+                yolluk_var = alan_orani > 0.03
         draw_roi(debug, state.yolluk_roi, (255, 0, 0), f"Yolluk {'VAR' if yolluk_var else 'YOK'}")
 
     urun_sayisi = 0
@@ -537,18 +545,18 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         urun_mask = mask[y:y + h, x:x + w]
 
         contours, _ = cv2.findContours(urun_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        toplam_alan = 0.0
+        toplam_kutu_alani = 0
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area > 120:
-                toplam_alan += area
                 bx, by, bw, bh = cv2.boundingRect(cnt)
+                toplam_kutu_alani += bw * bh
                 cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (0, 255, 255), 2)
 
         if state.single_product_area and state.single_product_area > 0:
-            urun_sayisi = max(0, int(round(toplam_alan / state.single_product_area)))
+            urun_sayisi = max(0, int(round(toplam_kutu_alani / state.single_product_area)))
         else:
-            urun_sayisi = int(toplam_alan > 0)
+            urun_sayisi = int(toplam_kutu_alani > 0)
 
         draw_roi(debug, state.urun_roi, (0, 255, 0), f"Urun Sayisi: {urun_sayisi}")
 
