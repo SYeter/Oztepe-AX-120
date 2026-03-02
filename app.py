@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from Electronics import STM32Serial
 from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
@@ -398,6 +399,10 @@ class MainWindow(QWidget):
 
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 0 if urun_sayisi < minimum_required else 1
+        if signal:
+            STM32Serial.STM32Serial(chr(1))
+        else:
+            STM32Serial.STM32Serial(chr(0))
 
         self.metric_count.setText(f"Anlik Urun: {urun_sayisi} | Beklenen: {self.state.expected_count}")
         self.metric_signal.setText(f"Cikis Sinyali: {signal} | Esik: %{self.state.threshold_percent}")
