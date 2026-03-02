@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from Electronics import STM32Serial
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QIcon, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QFrame,
@@ -36,6 +36,7 @@ class AppState:
     urun_roi: tuple[int, int, int, int] | None = None
     selected_bgr: tuple[int, int, int] | None = None
     selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] | None = None
+    single_product_area: int | None = None
     expected_count: int = 1
     threshold_percent: int = 90
 
@@ -143,6 +144,7 @@ class MainWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(WINDOW_TITLE)
+        self.setWindowIcon(QIcon("owl.ico"))
 
         self.state = AppState()
         self.selection_mode: str | None = None
@@ -221,7 +223,7 @@ class MainWindow(QWidget):
 
         yolluk_btn = QPushButton("Yolluk Alani Sec")
         urun_btn = QPushButton("Urun Alani Sec")
-        color_btn = QPushButton("Renk Sec")
+        color_btn = QPushButton("Urun Sec")
 
         yolluk_btn.clicked.connect(lambda: self.activate_mode("yolluk"))
         urun_btn.clicked.connect(lambda: self.activate_mode("urun"))
@@ -273,15 +275,15 @@ class MainWindow(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setMinimumWidth(320)
+        left_scroll.setMinimumWidth(520)
         left_scroll.setWidget(left_panel)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_scroll)
         splitter.addWidget(self.video_label)
-        splitter.setSizes([420, 1080])
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 8)
+        splitter.setSizes([620, 860])
+        splitter.setStretchFactor(0, 4)
+        splitter.setStretchFactor(1, 6)
 
         root = QHBoxLayout()
         root.addWidget(splitter)
@@ -313,7 +315,7 @@ class MainWindow(QWidget):
         messages = {
             "yolluk": "Yolluk ROI modu aktif. Goruntu uzerinde surukleyerek alan secin.",
             "urun": "Urun ROI modu aktif. Goruntu uzerinde surukleyerek alan secin.",
-            "color": "Renk secimi aktif. Goruntude surukleyerek bir alan secin.",
+            "color": "Urun secimi aktif. Tek urun alanini belirlemek icin goruntude surukleyerek alan secin.",
         }
         self.update_status(messages.get(mode, "Mod degistirildi."))
 
@@ -377,8 +379,11 @@ class MainWindow(QWidget):
             self.selection_mode = None
             return
 
-        self.metric_selected_color.setText(f"Secili Renk (BGR): {self.state.selected_bgr}")
-        self.update_status(f"✅ Renk alani secildi: {roi}. Benzer tonlar takip edilecek.")
+        self.state.single_product_area = max(1, w * h)
+        self.metric_selected_color.setText(
+            f"Secili Urun (BGR): {self.state.selected_bgr} | Tek Urun Alani: {self.state.single_product_area}"
+        )
+        self.update_status(f"✅ Urun secimi tamamlandi: {roi}. Alan bazli urun adedi hesaplanacak.")
         self.selection_mode = None
 
     def update_status(self, message: str) -> None:
@@ -433,7 +438,7 @@ def normalize_roi(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int, i
 def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int, int, int], label: str) -> None:
     x, y, w, h = roi
     cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-    cv2.putText(frame, label, (x, y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+    cv2.putText(frame, label, (x, max(30, y - 12)), cv2.FONT_HERSHEY_SIMPLEX, 1.8, color, 3)
 
 
 def build_mask_by_selected_color(
@@ -518,6 +523,12 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         if yolluk_mask.size > 0:
             area_ratio = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
             yolluk_var = area_ratio > 0.03
+            contours, _ = cv2.findContours(yolluk_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for cnt in contours:
+                area = cv2.contourArea(cnt)
+                if area > 120:
+                    bx, by, bw, bh = cv2.boundingRect(cnt)
+                    cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (255, 140, 0), 2)
         draw_roi(debug, state.yolluk_roi, (255, 0, 0), f"Yolluk {'VAR' if yolluk_var else 'YOK'}")
 
     urun_sayisi = 0
@@ -526,12 +537,18 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         urun_mask = mask[y:y + h, x:x + w]
 
         contours, _ = cv2.findContours(urun_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        toplam_alan = 0.0
         for cnt in contours:
             area = cv2.contourArea(cnt)
             if area > 120:
-                urun_sayisi += 1
+                toplam_alan += area
                 bx, by, bw, bh = cv2.boundingRect(cnt)
                 cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (0, 255, 255), 2)
+
+        if state.single_product_area and state.single_product_area > 0:
+            urun_sayisi = max(0, int(round(toplam_alan / state.single_product_area)))
+        else:
+            urun_sayisi = int(toplam_alan > 0)
 
         draw_roi(debug, state.urun_roi, (0, 255, 0), f"Urun Sayisi: {urun_sayisi}")
 
