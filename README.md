@@ -19,6 +19,8 @@ işlemlerini **Python + OpenCV + PyQt5** ile gerçek zamanlı olarak yapar.
 - Kullanıcının belirlediği **beklenen ürün adedi** ve **verim eşiği (%)** ile karar:
   - `ürün_sayısı < beklenen * (eşik/100)` ise **çıkış sinyali = 1**
   - aksi durumda **çıkış sinyali = 0**
+- RTSP akışında biriken kareleri tüketmek için **no-buffer kamera okuma** yaklaşımı (en güncel kareyi gösterir, gecikmeyi azaltır).
+- Düşük çözünürlüklü ekranlar için sol paneli kaydırılabilir hale getiren ve video alanını esneten **responsive yerleşim**.
 
 ## Kurulum
 ```bash
@@ -30,7 +32,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Program başlangıcında kamera indeksi ister (`0` varsayılan).
+Program, `app.py` içinde tanımlı RTSP adresine otomatik bağlanır.
 
 ## Arayüz Kullanımı
 1. **Yolluk Alanı Seç** veya **Ürün Alanı Seç** butonuna tıklayın.

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 from dataclasses import dataclass
 
 import cv2
@@ -17,6 +18,9 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -35,6 +39,44 @@ class AppState:
     threshold_percent: int = 90
 
 
+class NoBufferVideoCapture:
+    """Kamera buffer'ini biriktirmeden en guncel kareyi donduren capture sarmalayicisi."""
+
+    def __init__(self, source: str) -> None:
+        self.capture = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+        self.lock = threading.Lock()
+        self.latest_frame: np.ndarray | None = None
+        self.running = self.capture.isOpened()
+
+        self.thread = threading.Thread(target=self._reader, daemon=True)
+        if self.running:
+            self.thread.start()
+
+    def _reader(self) -> None:
+        while self.running:
+            ok, frame = self.capture.read()
+            if not ok:
+                continue
+            with self.lock:
+                self.latest_frame = frame
+
+    def is_opened(self) -> bool:
+        return self.capture.isOpened()
+
+    def read(self) -> tuple[bool, np.ndarray | None]:
+        with self.lock:
+            if self.latest_frame is None:
+                return False, None
+            return True, self.latest_frame.copy()
+
+    def release(self) -> None:
+        self.running = False
+        if self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        if self.capture.isOpened():
+            self.capture.release()
+
+
 class VideoLabel(QLabel):
     """Kamera goruntusu ustunde ROI ve renk secimi icin tiklama/drag destegi."""
 
@@ -44,7 +86,8 @@ class VideoLabel(QLabel):
         self.start_point: tuple[int, int] | None = None
         self.current_point: tuple[int, int] | None = None
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(960, 540)
+        self.setMinimumSize(480, 270)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(
             "QLabel {"
             " background: #11151d;"
@@ -104,8 +147,8 @@ class MainWindow(QWidget):
         self.selection_mode: str | None = None
         self.current_frame: np.ndarray | None = None
 
-        self.cap = cv2.VideoCapture(RTSP_URL, cv2.CAP_FFMPEG)
-        if not self.cap.isOpened():
+        self.cap = NoBufferVideoCapture(RTSP_URL)
+        if not self.cap.is_opened():
             raise RuntimeError("RTSP yayini acilamadi. URL bilgisini veya erisim yetkisini kontrol edin.")
 
         self.video_label = VideoLabel(self)
@@ -218,17 +261,31 @@ class MainWindow(QWidget):
 
         metrics_group.setLayout(metrics_layout)
 
-        left_panel = QVBoxLayout()
-        left_panel.addWidget(roi_group)
-        left_panel.addWidget(settings_group)
-        left_panel.addWidget(metrics_group)
-        left_panel.addWidget(self.status_label)
+        left_panel = QWidget()
+        left_panel_layout = QVBoxLayout(left_panel)
+        left_panel_layout.addWidget(roi_group)
+        left_panel_layout.addWidget(settings_group)
+        left_panel_layout.addWidget(metrics_group)
+        left_panel_layout.addWidget(self.status_label)
+        left_panel_layout.addStretch(1)
+
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setMinimumWidth(320)
+        left_scroll.setWidget(left_panel)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(left_scroll)
+        splitter.addWidget(self.video_label)
+        splitter.setSizes([420, 1080])
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 8)
 
         root = QHBoxLayout()
-        root.addLayout(left_panel, 3)
-        root.addWidget(self.video_label, 7)
+        root.addWidget(splitter)
         self.setLayout(root)
-        self.resize(1500, 850)
+        self.resize(1280, 720)
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -356,8 +413,7 @@ class MainWindow(QWidget):
         )
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
-        if self.cap.isOpened():
-            self.cap.release()
+        self.cap.release()
         event.accept()
 
 
