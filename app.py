@@ -42,6 +42,9 @@ class AppState:
     output_latched_high: bool = False
 
 
+SYSTEM_DISABLED_MESSAGE = "Yolluk ve ürün alanı seçilmedi sistem devre dışı"
+
+
 class NoBufferVideoCapture:
     """Kamera buffer'ini biriktirmeden en guncel kareyi donduren capture sarmalayicisi."""
 
@@ -160,6 +163,7 @@ class MainWindow(QWidget):
 
         self.status_label = QLabel("Hazır. ROI veya renk seçimi için aşağıdaki butonları kullanın.")
         self.status_label.setObjectName("status")
+        self.status_label.setWordWrap(True)
 
         self.expected_input = QLineEdit("1")
         self.threshold_input = QLineEdit("50")
@@ -278,12 +282,13 @@ class MainWindow(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setMinimumWidth(400)
+        left_scroll.setFixedWidth(430)
         left_scroll.setWidget(left_panel)
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(left_scroll)
         splitter.addWidget(self.video_label)
+        splitter.setChildrenCollapsible(False)
         splitter.setSizes([440, 880])
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 7)
@@ -417,23 +422,32 @@ class MainWindow(QWidget):
 
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
 
+        rois_selected = self.state.yolluk_roi is not None and self.state.urun_roi is not None
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 0 if urun_sayisi < minimum_required else 1
 
-        if self.state.output_latched_high:
+        if not rois_selected:
             signal = 1
-            if yolluk_var and urun_sayisi > 0:
-                self.state.output_latched_high = False
+            self.state.output_latched_high = False
+            self.update_status(SYSTEM_DISABLED_MESSAGE)
+        else:
+            if self.state.output_latched_high:
+                signal = 1
+                if yolluk_var and urun_sayisi > 0:
+                    self.state.output_latched_high = False
+                    signal = 0
+            elif yolluk_var:
                 signal = 0
-        elif yolluk_var:
-            signal = 0
-        elif signal:
-            self.state.output_latched_high = True
+            elif signal:
+                self.state.output_latched_high = True
 
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(f"Anlık Ürün: {urun_sayisi} | Beklenen: {self.state.expected_count}")
-        self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Eşik: %{self.state.threshold_percent}")
+        if not rois_selected:
+            self.metric_signal.setText(f"Çıkış Sinyali: {signal} | {SYSTEM_DISABLED_MESSAGE}")
+        else:
+            self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Eşik: %{self.state.threshold_percent}")
         self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
         self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'}")
 
@@ -556,7 +570,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 
             referans_kutu_alani = state.single_product_area if state.single_product_area and state.single_product_area > 0 else 0
             if referans_kutu_alani > 0:
-                yolluk_var = toplam_kutu_alani >= referans_kutu_alani
+                yolluk_var = toplam_kutu_alani >= (referans_kutu_alani * 3)
             else:
                 alan_orani = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
                 yolluk_var = alan_orani > 0.03
