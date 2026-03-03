@@ -21,7 +21,6 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QScrollArea,
     QSizePolicy,
-    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -41,6 +40,8 @@ class AppState:
     threshold_percent: int = 50
     yolluk_min_size_ratio: int = 3
     output_latched_high: bool = False
+    previous_yolluk_detected: bool = False
+    previous_urun_detected: bool = False
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
@@ -243,6 +244,16 @@ class MainWindow(QWidget):
         roi_layout.addWidget(color_btn)
         roi_group.setLayout(roi_layout)
 
+        signal_actions_group = QGroupBox("Sinyal ve Alan Yönetimi")
+        signal_actions_layout = QHBoxLayout()
+        clear_areas_btn = QPushButton("Alanları Sil")
+        reset_signal_btn = QPushButton("Reset")
+        clear_areas_btn.clicked.connect(self.clear_selected_areas)
+        reset_signal_btn.clicked.connect(self.reset_signal_high)
+        signal_actions_layout.addWidget(clear_areas_btn)
+        signal_actions_layout.addWidget(reset_signal_btn)
+        signal_actions_group.setLayout(signal_actions_layout)
+
         settings_group = QGroupBox("Üretim Parametreleri")
         settings_layout = QGridLayout()
         settings_layout.addWidget(QLabel("Beklenen Ürün Adedi"), 0, 0)
@@ -278,6 +289,7 @@ class MainWindow(QWidget):
         left_panel = QWidget()
         left_panel_layout = QVBoxLayout(left_panel)
         left_panel_layout.addWidget(roi_group)
+        left_panel_layout.addWidget(signal_actions_group)
         left_panel_layout.addWidget(settings_group)
         left_panel_layout.addWidget(metrics_group)
         left_panel_layout.addWidget(self.status_label)
@@ -286,21 +298,14 @@ class MainWindow(QWidget):
         self.left_scroll = QScrollArea()
         self.left_scroll.setWidgetResizable(True)
         self.left_scroll.setFrameShape(QFrame.NoFrame)
-        self.left_scroll.setMinimumWidth(520)
+        self.left_scroll.setMinimumWidth(400)
         self.left_scroll.setWidget(left_panel)
 
-        self.splitter = QSplitter(Qt.Horizontal)
-        self.splitter.addWidget(self.left_scroll)
-        self.splitter.addWidget(self.video_label)
-        self.splitter.setChildrenCollapsible(False)
-        self.splitter.setStretchFactor(0, 4)
-        self.splitter.setStretchFactor(1, 6)
-
         root = QHBoxLayout()
-        root.addWidget(self.splitter)
+        root.addWidget(self.left_scroll, 1)
+        root.addWidget(self.video_label, 1)
         self.setLayout(root)
         self.resize(1160, 680)
-        self.sync_splitter_layout()
 
     def setup_fullscreen_behavior(self) -> None:
         """Uygulama her zaman gercek tam ekran modunda kalsin."""
@@ -312,27 +317,23 @@ class MainWindow(QWidget):
 
     def _show_fullscreen_and_sync(self) -> None:
         self.showFullScreen()
-        self.sync_splitter_layout()
 
     def handle_screen_geometry_change(self, _geometry) -> None:
         if self.isVisible():
             self.showFullScreen()
-            self.sync_splitter_layout()
+    
+    def clear_selected_areas(self) -> None:
+        self.state.yolluk_roi = None
+        self.state.urun_roi = None
+        self.selection_mode = None
+        self.state.output_latched_high = True
+        self.state.previous_yolluk_detected = False
+        self.state.previous_urun_detected = False
+        self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
-    def resizeEvent(self, event) -> None:  # type: ignore[override]
-        super().resizeEvent(event)
-        self.sync_splitter_layout()
-
-    def showEvent(self, event) -> None:  # type: ignore[override]
-        super().showEvent(event)
-        self.sync_splitter_layout()
-
-    def sync_splitter_layout(self) -> None:
-        if not hasattr(self, "splitter"):
-            return
-        total_width = max(900, self.width())
-        left_width = min(max(520, int(total_width * 0.40)), 680)
-        self.splitter.setSizes([left_width, max(380, total_width - left_width)])
+    def reset_signal_high(self) -> None:
+        self.state.output_latched_high = True
+        self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -454,37 +455,55 @@ class MainWindow(QWidget):
         rois_selected = yolluk_roi_selected or urun_roi_selected
 
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
-        signal = 0 if urun_sayisi < minimum_required else 1
+
+        urun_algilandi = urun_sayisi > 0
 
         if not rois_selected:
             signal = 1
             self.state.output_latched_high = False
+            self.state.previous_yolluk_detected = yolluk_var
+            self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
         else:
-            if yolluk_roi_selected and not urun_roi_selected:
-                signal = 0 if yolluk_var else 1
-                self.state.output_latched_high = False
-            elif urun_roi_selected and not yolluk_roi_selected:
-                signal = 0 if urun_sayisi < minimum_required else 1
-                self.state.output_latched_high = False
+            if yolluk_roi_selected and urun_roi_selected:
+                trigger_high = (urun_sayisi >= minimum_required) and (not yolluk_var)
+            elif yolluk_roi_selected and not urun_roi_selected:
+                trigger_high = not yolluk_var
             else:
-                if self.state.output_latched_high:
-                    signal = 1
-                    if yolluk_var or urun_sayisi > 0:
-                        self.state.output_latched_high = False
-                        signal = 0
-                elif yolluk_var:
+                trigger_high = urun_sayisi >= minimum_required
+
+            yeni_yolluk = yolluk_roi_selected and yolluk_var and (not self.state.previous_yolluk_detected)
+            yeni_urun = urun_roi_selected and urun_algilandi and (not self.state.previous_urun_detected)
+            reset_latch = yeni_yolluk or yeni_urun
+
+            if self.state.output_latched_high:
+                if reset_latch:
+                    self.state.output_latched_high = False
                     signal = 0
-                elif signal:
+                else:
+                    signal = 1
+            else:
+                if trigger_high:
                     self.state.output_latched_high = True
+                    signal = 1
+                else:
+                    signal = 0
+
+            if yolluk_roi_selected and not urun_roi_selected:
+                self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Mod: Sadece Yolluk")
+            elif urun_roi_selected and not yolluk_roi_selected:
+                self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Mod: Sadece Ürün, Eşik: %{self.state.threshold_percent}")
+            else:
+                self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Mod: Ürün + Yolluk, Eşik: %{self.state.threshold_percent}")
+
+            self.state.previous_yolluk_detected = yolluk_var
+            self.state.previous_urun_detected = urun_algilandi
 
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(f"Anlık Ürün: {urun_sayisi} | Beklenen: {self.state.expected_count}")
         if not rois_selected:
             self.metric_signal.setText(f"Çıkış Sinyali: {signal} | {SYSTEM_DISABLED_MESSAGE}")
-        else:
-            self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Eşik: %{self.state.threshold_percent}")
         self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
         self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'}")
 
