@@ -1,5 +1,5 @@
 String incomingByte ;    
-int commandPin = PA0;
+int commandPin = PA1;
 
 
 
