@@ -422,7 +422,10 @@ class MainWindow(QWidget):
 
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
 
-        rois_selected = self.state.yolluk_roi is not None or self.state.urun_roi is not None
+        yolluk_roi_selected = self.state.yolluk_roi is not None
+        urun_roi_selected = self.state.urun_roi is not None
+        rois_selected = yolluk_roi_selected or urun_roi_selected
+
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 0 if urun_sayisi < minimum_required else 1
 
@@ -431,15 +434,22 @@ class MainWindow(QWidget):
             self.state.output_latched_high = False
             self.update_status(SYSTEM_DISABLED_MESSAGE)
         else:
-            if self.state.output_latched_high:
-                signal = 1
-                if yolluk_var and urun_sayisi > 0:
-                    self.state.output_latched_high = False
+            if yolluk_roi_selected and not urun_roi_selected:
+                signal = 0 if yolluk_var else 1
+                self.state.output_latched_high = False
+            elif urun_roi_selected and not yolluk_roi_selected:
+                signal = 0 if urun_sayisi < minimum_required else 1
+                self.state.output_latched_high = False
+            else:
+                if self.state.output_latched_high:
+                    signal = 1
+                    if yolluk_var and urun_sayisi > 0:
+                        self.state.output_latched_high = False
+                        signal = 0
+                elif yolluk_var:
                     signal = 0
-            elif yolluk_var:
-                signal = 0
-            elif signal:
-                self.state.output_latched_high = True
+                elif signal:
+                    self.state.output_latched_high = True
 
         STM32Serial.STM32Serial(chr(signal))
 
