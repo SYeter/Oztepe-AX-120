@@ -39,6 +39,7 @@ class AppState:
     single_product_area: int | None = None
     expected_count: int = 1
     threshold_percent: int = 50
+    yolluk_min_size_ratio: int = 3
     output_latched_high: bool = False
 
 
@@ -167,6 +168,7 @@ class MainWindow(QWidget):
 
         self.expected_input = QLineEdit("1")
         self.threshold_input = QLineEdit("50")
+        self.yolluk_ratio_input = QLineEdit(str(self.state.yolluk_min_size_ratio))
 
         self.metric_selected_color = QLabel("Seçili Renk (BGR): -")
         self.metric_count = QLabel("Anlık Ürün: 0")
@@ -247,10 +249,12 @@ class MainWindow(QWidget):
         settings_layout.addWidget(self.expected_input, 0, 1)
         settings_layout.addWidget(QLabel("Verim Eşiği (%)"), 1, 0)
         settings_layout.addWidget(self.threshold_input, 1, 1)
+        settings_layout.addWidget(QLabel("Yolluk Büyüklüğü (x Ürün)"), 2, 0)
+        settings_layout.addWidget(self.yolluk_ratio_input, 2, 1)
 
         apply_btn = QPushButton("Değerleri Uygula")
         apply_btn.clicked.connect(self.apply_inputs)
-        settings_layout.addWidget(apply_btn, 0, 2, 2, 1)
+        settings_layout.addWidget(apply_btn, 0, 2, 3, 1)
         settings_group.setLayout(settings_layout)
 
         metrics_group = QGroupBox("Canlı Sonuçlar")
@@ -279,24 +283,24 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
-        left_scroll = QScrollArea()
-        left_scroll.setWidgetResizable(True)
-        left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setFixedWidth(430)
-        left_scroll.setWidget(left_panel)
+        self.left_scroll = QScrollArea()
+        self.left_scroll.setWidgetResizable(True)
+        self.left_scroll.setFrameShape(QFrame.NoFrame)
+        self.left_scroll.setMinimumWidth(520)
+        self.left_scroll.setWidget(left_panel)
 
-        splitter = QSplitter(Qt.Horizontal)
-        splitter.addWidget(left_scroll)
-        splitter.addWidget(self.video_label)
-        splitter.setChildrenCollapsible(False)
-        splitter.setSizes([440, 880])
-        splitter.setStretchFactor(0, 3)
-        splitter.setStretchFactor(1, 7)
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.addWidget(self.left_scroll)
+        self.splitter.addWidget(self.video_label)
+        self.splitter.setChildrenCollapsible(False)
+        self.splitter.setStretchFactor(0, 4)
+        self.splitter.setStretchFactor(1, 6)
 
         root = QHBoxLayout()
-        root.addWidget(splitter)
+        root.addWidget(self.splitter)
         self.setLayout(root)
         self.resize(1160, 680)
+        self.sync_splitter_layout()
 
     def setup_fullscreen_behavior(self) -> None:
         """Uygulama her zaman gercek tam ekran modunda kalsin."""
@@ -304,11 +308,31 @@ class MainWindow(QWidget):
         if screen is not None:
             screen.geometryChanged.connect(self.handle_screen_geometry_change)
 
-        QTimer.singleShot(0, self.showFullScreen)
+        QTimer.singleShot(0, self._show_fullscreen_and_sync)
+
+    def _show_fullscreen_and_sync(self) -> None:
+        self.showFullScreen()
+        self.sync_splitter_layout()
 
     def handle_screen_geometry_change(self, _geometry) -> None:
         if self.isVisible():
             self.showFullScreen()
+            self.sync_splitter_layout()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self.sync_splitter_layout()
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        super().showEvent(event)
+        self.sync_splitter_layout()
+
+    def sync_splitter_layout(self) -> None:
+        if not hasattr(self, "splitter"):
+            return
+        total_width = max(900, self.width())
+        left_width = min(max(520, int(total_width * 0.40)), 680)
+        self.splitter.setSizes([left_width, max(380, total_width - left_width)])
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -319,15 +343,18 @@ class MainWindow(QWidget):
         try:
             expected = int(self.expected_input.text())
             threshold = int(self.threshold_input.text())
+            yolluk_ratio = int(self.yolluk_ratio_input.text())
         except ValueError:
             QMessageBox.warning(self, "Hatalı Giriş", "Lütfen sadece sayısal değer girin.")
             return
 
         self.state.expected_count = max(1, min(999, expected))
         self.state.threshold_percent = max(0, min(100, threshold))
+        self.state.yolluk_min_size_ratio = max(1, min(50, yolluk_ratio))
 
         self.expected_input.setText(str(self.state.expected_count))
         self.threshold_input.setText(str(self.state.threshold_percent))
+        self.yolluk_ratio_input.setText(str(self.state.yolluk_min_size_ratio))
         self.update_status("✅ Parametreler güncellendi.")
 
     def activate_mode(self, mode: str) -> None:
@@ -443,7 +470,7 @@ class MainWindow(QWidget):
             else:
                 if self.state.output_latched_high:
                     signal = 1
-                    if yolluk_var and urun_sayisi > 0:
+                    if yolluk_var or urun_sayisi > 0:
                         self.state.output_latched_high = False
                         signal = 0
                 elif yolluk_var:
@@ -580,7 +607,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 
             referans_kutu_alani = state.single_product_area if state.single_product_area and state.single_product_area > 0 else 0
             if referans_kutu_alani > 0:
-                yolluk_var = toplam_kutu_alani >= (referans_kutu_alani * 3)
+                yolluk_var = toplam_kutu_alani >= (referans_kutu_alani * state.yolluk_min_size_ratio)
             else:
                 alan_orani = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
                 yolluk_var = alan_orani > 0.03
