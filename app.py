@@ -42,7 +42,7 @@ class AppState:
     output_latched_high: bool = False
 
 
-SYSTEM_DISABLED_MESSAGE = "Yolluk ve ürün alanı seçilmedi sistem devre dışı"
+SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
 
 
 class NoBufferVideoCapture:
@@ -422,7 +422,7 @@ class MainWindow(QWidget):
 
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
 
-        rois_selected = self.state.yolluk_roi is not None and self.state.urun_roi is not None
+        rois_selected = self.state.yolluk_roi is not None or self.state.urun_roi is not None
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 0 if urun_sayisi < minimum_required else 1
 
