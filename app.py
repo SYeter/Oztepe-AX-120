@@ -39,6 +39,7 @@ class AppState:
     single_product_area: int | None = None
     expected_count: int = 1
     threshold_percent: int = 50
+    output_latched_high: bool = False
 
 
 class NoBufferVideoCapture:
@@ -419,13 +420,17 @@ class MainWindow(QWidget):
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
         signal = 0 if urun_sayisi < minimum_required else 1
 
-        if yolluk_var:
+        if self.state.output_latched_high:
+            signal = 1
+            if yolluk_var and urun_sayisi > 0:
+                self.state.output_latched_high = False
+                signal = 0
+        elif yolluk_var:
             signal = 0
-            STM32Serial.STM32Serial(chr(0))
         elif signal:
-            STM32Serial.STM32Serial(chr(1))
-        else:
-            STM32Serial.STM32Serial(chr(0))
+            self.state.output_latched_high = True
+
+        STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(f"Anlık Ürün: {urun_sayisi} | Beklenen: {self.state.expected_count}")
         self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Eşik: %{self.state.threshold_percent}")
