@@ -585,7 +585,7 @@ class MainWindow(QWidget):
                 else:
                     if degerlendirilen_urun_sayisi >= minimum_required:
                         self.state.waiting_products_to_clear = True
-                    elif urun_algilandi:
+                    elif urun_algilandi or self.state.previous_urun_detected:
                         urun_fault = True
 
             if yolluk_roi_selected and not urun_roi_selected:
