@@ -51,6 +51,8 @@ class AppState:
     waiting_products_to_clear: bool = False
     urun_sayim_aktif: bool = False
     urun_sayim_maksimum: int = 0
+    threshold_fault_latched: bool = False
+    threshold_fault_count: int | None = None
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
@@ -403,6 +405,8 @@ class MainWindow(QWidget):
         self.state.waiting_products_to_clear = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
+        self.state.threshold_fault_latched = False
+        self.state.threshold_fault_count = None
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
     def reset_signal_high(self) -> None:
@@ -414,6 +418,8 @@ class MainWindow(QWidget):
         self.state.waiting_products_to_clear = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
+        self.state.threshold_fault_latched = False
+        self.state.threshold_fault_count = None
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
@@ -571,6 +577,8 @@ class MainWindow(QWidget):
             self.state.waiting_products_to_clear = False
             self.state.urun_sayim_aktif = False
             self.state.urun_sayim_maksimum = 0
+            self.state.threshold_fault_latched = False
+            self.state.threshold_fault_count = None
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
@@ -587,6 +595,12 @@ class MainWindow(QWidget):
                         self.state.waiting_products_to_clear = True
                     elif urun_algilandi or self.state.previous_urun_detected:
                         urun_fault = True
+                        if not self.state.threshold_fault_latched:
+                            self.state.threshold_fault_latched = True
+                            self.state.threshold_fault_count = degerlendirilen_urun_sayisi
+
+            if self.state.threshold_fault_latched:
+                urun_fault = True
 
             if yolluk_roi_selected and not urun_roi_selected:
                 trigger_high = not yolluk_var
@@ -601,7 +615,12 @@ class MainWindow(QWidget):
 
             signal_zero_reason_parts: list[str] = []
             if urun_roi_selected and urun_fault:
-                if self.state.waiting_products_to_clear:
+                if self.state.threshold_fault_latched:
+                    threshold_fault_count = self.state.threshold_fault_count if self.state.threshold_fault_count is not None else 0
+                    signal_zero_reason_parts.append(
+                        f"Ürün sayısı eşik değerin altında ürün sayısı {threshold_fault_count}"
+                    )
+                elif self.state.waiting_products_to_clear:
                     signal_zero_reason_parts.append("Kalıbın arasında ürün var")
                 else:
                     signal_zero_reason_parts.append("ürün sayısı eşik değerin altında")
@@ -653,7 +672,7 @@ class MainWindow(QWidget):
                 if self.state.signal_zero_since is None:
                     self.state.signal_zero_since = now
 
-                if (now - self.state.signal_zero_since) >= self.state.timeout_seconds:
+                if (not self.state.threshold_fault_latched) and (now - self.state.signal_zero_since) >= self.state.timeout_seconds:
                     self.state.timeout_latched_high = True
                     self.state.output_latched_high = True
                     self.state.fault_detected_since = None
