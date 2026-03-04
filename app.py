@@ -748,6 +748,17 @@ def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int
     cv2.putText(frame, label, (x, max(30, y - 12)), cv2.FONT_HERSHEY_SIMPLEX, 1.8, color, 3)
 
 
+def expand_roi(roi: tuple[int, int, int, int], frame_shape: tuple[int, int, int], pad: int = 18) -> tuple[int, int, int, int]:
+    x, y, w, h = roi
+    frame_h, frame_w = frame_shape[:2]
+
+    x1 = max(0, x - pad)
+    y1 = max(0, y - pad)
+    x2 = min(frame_w, x + w + pad)
+    y2 = min(frame_h, y + h + pad)
+    return x1, y1, max(1, x2 - x1), max(1, y2 - y1)
+
+
 def build_mask_by_selected_color(
     frame: np.ndarray,
     selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
@@ -848,14 +859,14 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 
     urun_sayisi = 0
     if state.urun_roi:
-        x, y, w, h = state.urun_roi
+        x, y, w, h = expand_roi(state.urun_roi, frame.shape)
         urun_mask = mask[y:y + h, x:x + w]
 
         contours, _ = cv2.findContours(urun_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         toplam_kutu_alani = 0
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area > 120:
+            if area > 80:
                 bx, by, bw, bh = cv2.boundingRect(cnt)
                 toplam_kutu_alani += bw * bh
                 cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (0, 255, 255), 2)
