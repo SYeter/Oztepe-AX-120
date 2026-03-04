@@ -38,7 +38,7 @@ class AppState:
     single_product_area: int | None = None
     expected_count: int = 1
     threshold_percent: int = 50
-    yolluk_min_size_ratio: int = 3
+    yolluk_min_size_ratio: float = 3.0
     intervention_seconds: int = 2
     timeout_seconds: int = 20
     output_latched_high: bool = False
@@ -419,7 +419,7 @@ class MainWindow(QWidget):
         try:
             expected = int(self.expected_input.text())
             threshold = int(self.threshold_input.text())
-            yolluk_ratio = int(self.yolluk_ratio_input.text())
+            yolluk_ratio = float(self.yolluk_ratio_input.text())
             intervention_seconds = int(self.intervention_input.text())
             timeout_seconds = int(self.timeout_input.text())
         except ValueError:
@@ -428,13 +428,13 @@ class MainWindow(QWidget):
 
         self.state.expected_count = max(1, min(999, expected))
         self.state.threshold_percent = max(0, min(100, threshold))
-        self.state.yolluk_min_size_ratio = max(1, min(50, yolluk_ratio))
+        self.state.yolluk_min_size_ratio = max(0.1, min(50.0, yolluk_ratio))
         self.state.intervention_seconds = max(0, min(3600, intervention_seconds))
         self.state.timeout_seconds = max(1, min(3600, timeout_seconds))
 
         self.expected_input.setText(str(self.state.expected_count))
         self.threshold_input.setText(str(self.state.threshold_percent))
-        self.yolluk_ratio_input.setText(str(self.state.yolluk_min_size_ratio))
+        self.yolluk_ratio_input.setText(f"{self.state.yolluk_min_size_ratio:g}")
         self.intervention_input.setText(str(self.state.intervention_seconds))
         self.timeout_input.setText(str(self.state.timeout_seconds))
         self.state.waiting_products_to_clear = False
@@ -628,7 +628,12 @@ class MainWindow(QWidget):
                 if self.state.signal_zero_since is None:
                     self.state.signal_zero_since = now
 
-                if (now - self.state.signal_zero_since) >= self.state.timeout_seconds:
+                timeout_elapsed = now - self.state.signal_zero_since
+                self.update_status(
+                    f"⏱️ Zaman aşımı sayacı çalışıyor ({timeout_elapsed:.1f}/{self.state.timeout_seconds} sn)."
+                )
+
+                if timeout_elapsed >= self.state.timeout_seconds:
                     self.state.timeout_latched_high = True
                     self.state.output_latched_high = True
                     self.state.fault_detected_since = None
