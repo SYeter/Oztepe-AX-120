@@ -39,14 +39,19 @@ class AppState:
     expected_count: int = 1
     threshold_percent: int = 50
     yolluk_min_size_ratio: int = 3
+    intervention_seconds: int = 2
     timeout_seconds: int = 10
     output_latched_high: bool = False
+    fault_detected_since: float | None = None
+    timeout_latched_high: bool = False
+    yolluk_clear_since: float | None = None
     previous_yolluk_detected: bool = False
     previous_urun_detected: bool = False
     signal_zero_since: float | None = None
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
+YOLLUK_REARM_SECONDS = 2
 
 
 class NoBufferVideoCapture:
@@ -226,9 +231,9 @@ class MainWindow(QWidget):
         self.expected_input = QLineEdit("1")
         self.threshold_input = QLineEdit("50")
         self.yolluk_ratio_input = QLineEdit(str(self.state.yolluk_min_size_ratio))
+        self.intervention_input = QLineEdit(str(self.state.intervention_seconds))
         self.timeout_input = QLineEdit(str(self.state.timeout_seconds))
 
-        self.metric_selected_color = QLabel("Seçili Renk (BGR): -")
         self.metric_count = QLabel("Anlık Ürün: 0")
         self.metric_signal = MarqueeLabel("Çıkış Sinyali: 0")
         self.metric_yolluk = QLabel("Yolluk: YOK")
@@ -319,17 +324,19 @@ class MainWindow(QWidget):
         settings_layout.addWidget(self.threshold_input, 1, 1)
         settings_layout.addWidget(QLabel("Yolluk Büyüklüğü (x Ürün)"), 2, 0)
         settings_layout.addWidget(self.yolluk_ratio_input, 2, 1)
-        settings_layout.addWidget(QLabel("Zaman Aşımı (sn)"), 3, 0)
-        settings_layout.addWidget(self.timeout_input, 3, 1)
+        settings_layout.addWidget(QLabel("Müdahale Süresi (sn)"), 3, 0)
+        settings_layout.addWidget(self.intervention_input, 3, 1)
+        settings_layout.addWidget(QLabel("Zaman Aşımı (sn)"), 4, 0)
+        settings_layout.addWidget(self.timeout_input, 4, 1)
 
         apply_btn = QPushButton("Değerleri Uygula")
         apply_btn.clicked.connect(self.apply_inputs)
-        settings_layout.addWidget(apply_btn, 0, 2, 4, 1)
+        settings_layout.addWidget(apply_btn, 0, 2, 5, 1)
         settings_group.setLayout(settings_layout)
 
         metrics_group = QGroupBox("Canlı Sonuçlar")
         metrics_layout = QVBoxLayout()
-        for metric in [self.metric_selected_color, self.metric_count, self.metric_signal, self.metric_yolluk]:
+        for metric in [self.metric_count, self.metric_signal, self.metric_yolluk]:
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
@@ -382,14 +389,20 @@ class MainWindow(QWidget):
         self.state.urun_roi = None
         self.selection_mode = None
         self.state.output_latched_high = True
+        self.state.timeout_latched_high = False
         self.state.previous_yolluk_detected = False
         self.state.previous_urun_detected = False
+        self.state.fault_detected_since = None
         self.state.signal_zero_since = None
+        self.state.yolluk_clear_since = None
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
     def reset_signal_high(self) -> None:
         self.state.output_latched_high = True
+        self.state.timeout_latched_high = False
+        self.state.fault_detected_since = None
         self.state.signal_zero_since = None
+        self.state.yolluk_clear_since = None
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
@@ -402,6 +415,7 @@ class MainWindow(QWidget):
             expected = int(self.expected_input.text())
             threshold = int(self.threshold_input.text())
             yolluk_ratio = int(self.yolluk_ratio_input.text())
+            intervention_seconds = int(self.intervention_input.text())
             timeout_seconds = int(self.timeout_input.text())
         except ValueError:
             QMessageBox.warning(self, "Hatalı Giriş", "Lütfen sadece sayısal değer girin.")
@@ -410,11 +424,13 @@ class MainWindow(QWidget):
         self.state.expected_count = max(1, min(999, expected))
         self.state.threshold_percent = max(0, min(100, threshold))
         self.state.yolluk_min_size_ratio = max(1, min(50, yolluk_ratio))
+        self.state.intervention_seconds = max(0, min(3600, intervention_seconds))
         self.state.timeout_seconds = max(1, min(3600, timeout_seconds))
 
         self.expected_input.setText(str(self.state.expected_count))
         self.threshold_input.setText(str(self.state.threshold_percent))
         self.yolluk_ratio_input.setText(str(self.state.yolluk_min_size_ratio))
+        self.intervention_input.setText(str(self.state.intervention_seconds))
         self.timeout_input.setText(str(self.state.timeout_seconds))
         self.update_status("✅ Parametreler güncellendi.")
 
@@ -488,9 +504,6 @@ class MainWindow(QWidget):
             return
 
         self.state.single_product_area = max(1, w * h)
-        self.metric_selected_color.setText(
-            f"Seçili Ürün (BGR): {self.state.selected_bgr} | Tek Ürün Alanı: {self.state.single_product_area}"
-        )
         self.update_status(f"✅ Ürün seçimi tamamlandı: {roi}. Alan bazlı ürün adedi hesaplanacak.")
         self.selection_mode = None
 
@@ -522,7 +535,10 @@ class MainWindow(QWidget):
             signal = 1
             signal_zero_reason = ""
             self.state.output_latched_high = False
+            self.state.timeout_latched_high = False
+            self.state.fault_detected_since = None
             self.state.signal_zero_since = None
+            self.state.yolluk_clear_since = None
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
@@ -545,29 +561,58 @@ class MainWindow(QWidget):
                 signal_zero_reason_parts.append("yolluk var")
             signal_zero_reason = " ve ".join(signal_zero_reason_parts)
 
-            if self.state.output_latched_high:
-                if reset_latch:
+            now = time.monotonic()
+            fault_detected = not trigger_high
+
+            if self.state.timeout_latched_high:
+                signal = 1
+                if yolluk_roi_selected:
+                    if yolluk_var:
+                        self.state.yolluk_clear_since = None
+                    else:
+                        if self.state.yolluk_clear_since is None:
+                            self.state.yolluk_clear_since = now
+                        elif (now - self.state.yolluk_clear_since) >= YOLLUK_REARM_SECONDS:
+                            self.state.timeout_latched_high = False
+                            self.state.fault_detected_since = None
+                            self.state.output_latched_high = False
+                            self.update_status("✅ Yolluk 2 sn boyunca görünmedi. Sinyal tekrar yolluğa duyarlı.")
+                else:
+                    self.state.timeout_latched_high = False
+            if not self.state.timeout_latched_high:
+                if self.state.output_latched_high and not reset_latch:
+                    signal = 1
+                else:
                     self.state.output_latched_high = False
-                    signal = 0
-                else:
-                    signal = 1
-            else:
-                if trigger_high:
-                    self.state.output_latched_high = True
-                    signal = 1
-                else:
-                    signal = 0
+                    if fault_detected:
+                        if self.state.fault_detected_since is None:
+                            self.state.fault_detected_since = now
+
+                        waited = now - self.state.fault_detected_since
+                        if waited >= self.state.intervention_seconds:
+                            signal = 0
+                        else:
+                            signal = 1
+                            if self.state.intervention_seconds > 0:
+                                self.update_status(
+                                    f"⏳ Hata algılandı. Müdahale süresi bekleniyor ({waited:.1f}/{self.state.intervention_seconds} sn)."
+                                )
+                    else:
+                        self.state.fault_detected_since = None
+                        signal = 1
 
             if signal == 0:
-                now = time.monotonic()
                 if self.state.signal_zero_since is None:
                     self.state.signal_zero_since = now
 
                 if (now - self.state.signal_zero_since) >= self.state.timeout_seconds:
+                    self.state.timeout_latched_high = True
                     self.state.output_latched_high = True
+                    self.state.fault_detected_since = None
                     signal = 1
                     self.state.signal_zero_since = None
-                    self.update_status("⏱️ Zaman aşımı doldu, sinyal otomatik olarak 1 yapıldı.")
+                    self.state.yolluk_clear_since = None if yolluk_var else now
+                    self.update_status("⏱️ Zaman aşımı doldu, sinyal 1'e kilitlendi. Yolluk 2 sn görünmezse normal moda döner.")
             else:
                 self.state.signal_zero_since = None
 
