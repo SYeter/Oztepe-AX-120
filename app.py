@@ -701,7 +701,9 @@ class MainWindow(QWidget):
                     signal_text += f" | {signal_zero_reason}"
                 if self.state.signal_zero_since is not None:
                     timeout_elapsed = now - self.state.signal_zero_since
-                    signal_text += f" | Zaman aşımı: {timeout_elapsed:.1f}/{self.state.timeout_seconds} sn"
+                    self.update_status(
+                        f"⏳ Hata algılandı. Müdahale süresi bekleniyor | Zaman aşımı: {timeout_elapsed:.1f}/{self.state.timeout_seconds} sn"
+                    )
             elif self.state.timeout_latched_high:
                 signal_text += " | Zaman aşımı sonrası 1'e kilitli"
             self.metric_signal.setText(signal_text)
