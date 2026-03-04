@@ -49,6 +49,8 @@ class AppState:
     previous_urun_detected: bool = False
     signal_zero_since: float | None = None
     waiting_products_to_clear: bool = False
+    urun_sayim_aktif: bool = False
+    urun_sayim_maksimum: int = 0
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
@@ -399,6 +401,8 @@ class MainWindow(QWidget):
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
         self.state.waiting_products_to_clear = False
+        self.state.urun_sayim_aktif = False
+        self.state.urun_sayim_maksimum = 0
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
     def reset_signal_high(self) -> None:
@@ -408,6 +412,8 @@ class MainWindow(QWidget):
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
         self.state.waiting_products_to_clear = False
+        self.state.urun_sayim_aktif = False
+        self.state.urun_sayim_maksimum = 0
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
@@ -438,6 +444,8 @@ class MainWindow(QWidget):
         self.intervention_input.setText(str(self.state.intervention_seconds))
         self.timeout_input.setText(str(self.state.timeout_seconds))
         self.state.waiting_products_to_clear = False
+        self.state.urun_sayim_aktif = False
+        self.state.urun_sayim_maksimum = 0
         self.update_status("✅ Parametreler güncellendi.")
 
     def activate_mode(self, mode: str) -> None:
@@ -536,6 +544,21 @@ class MainWindow(QWidget):
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
 
         urun_algilandi = urun_sayisi > 0
+        degerlendirilen_urun_sayisi = urun_sayisi
+
+        if urun_roi_selected:
+            if urun_algilandi:
+                if not self.state.urun_sayim_aktif:
+                    self.state.urun_sayim_aktif = True
+                    self.state.urun_sayim_maksimum = urun_sayisi
+                else:
+                    self.state.urun_sayim_maksimum = max(self.state.urun_sayim_maksimum, urun_sayisi)
+                degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
+            else:
+                if self.state.urun_sayim_aktif:
+                    degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
+                self.state.urun_sayim_aktif = False
+                self.state.urun_sayim_maksimum = 0
 
         if not rois_selected:
             signal = 1
@@ -546,6 +569,8 @@ class MainWindow(QWidget):
             self.state.signal_zero_since = None
             self.state.yolluk_clear_since = None
             self.state.waiting_products_to_clear = False
+            self.state.urun_sayim_aktif = False
+            self.state.urun_sayim_maksimum = 0
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
@@ -558,7 +583,7 @@ class MainWindow(QWidget):
                     else:
                         urun_fault = True
                 else:
-                    if urun_sayisi >= minimum_required:
+                    if degerlendirilen_urun_sayisi >= minimum_required:
                         self.state.waiting_products_to_clear = True
                     elif urun_algilandi:
                         urun_fault = True
@@ -612,7 +637,7 @@ class MainWindow(QWidget):
                             self.state.fault_detected_since = now
 
                         waited = now - self.state.fault_detected_since
-                        if waited >= self.state.intervention_seconds:
+                        if urun_fault or waited >= self.state.intervention_seconds:
                             signal = 0
                         else:
                             signal = 1
@@ -649,7 +674,9 @@ class MainWindow(QWidget):
 
         STM32Serial.STM32Serial(chr(signal))
 
-        self.metric_count.setText(f"Anlık Ürün: {urun_sayisi} | Beklenen: {self.state.expected_count}")
+        self.metric_count.setText(
+            f"Anlık Ürün: {urun_sayisi} | Değerlendirilen: {degerlendirilen_urun_sayisi} | Beklenen: {self.state.expected_count}"
+        )
         if not rois_selected:
             self.metric_signal.setText(f"Çıkış Sinyali: {signal} | {SYSTEM_DISABLED_MESSAGE}")
         self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
