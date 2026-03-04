@@ -40,7 +40,7 @@ class AppState:
     threshold_percent: int = 50
     yolluk_min_size_ratio: int = 3
     intervention_seconds: int = 2
-    timeout_seconds: int = 10
+    timeout_seconds: int = 20
     output_latched_high: bool = False
     fault_detected_since: float | None = None
     timeout_latched_high: bool = False
@@ -641,7 +641,7 @@ class MainWindow(QWidget):
 
             signal_text = f"Çıkış Sinyali: {signal}"
             if signal == 0 and signal_zero_reason:
-                signal_text += f" | Sebep: {signal_zero_reason}"
+                signal_text += f" | {signal_zero_reason}"
             self.metric_signal.setText(signal_text)
 
             self.state.previous_yolluk_detected = yolluk_var
