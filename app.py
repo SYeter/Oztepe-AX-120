@@ -48,6 +48,7 @@ class AppState:
     previous_yolluk_detected: bool = False
     previous_urun_detected: bool = False
     signal_zero_since: float | None = None
+    waiting_products_to_clear: bool = False
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
@@ -395,6 +396,7 @@ class MainWindow(QWidget):
         self.state.fault_detected_since = None
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
+        self.state.waiting_products_to_clear = False
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
     def reset_signal_high(self) -> None:
@@ -403,6 +405,7 @@ class MainWindow(QWidget):
         self.state.fault_detected_since = None
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
+        self.state.waiting_products_to_clear = False
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
@@ -432,6 +435,7 @@ class MainWindow(QWidget):
         self.yolluk_ratio_input.setText(str(self.state.yolluk_min_size_ratio))
         self.intervention_input.setText(str(self.state.intervention_seconds))
         self.timeout_input.setText(str(self.state.timeout_seconds))
+        self.state.waiting_products_to_clear = False
         self.update_status("✅ Parametreler güncellendi.")
 
     def activate_mode(self, mode: str) -> None:
@@ -539,24 +543,41 @@ class MainWindow(QWidget):
             self.state.fault_detected_since = None
             self.state.signal_zero_since = None
             self.state.yolluk_clear_since = None
+            self.state.waiting_products_to_clear = False
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
         else:
-            if yolluk_roi_selected and urun_roi_selected:
-                trigger_high = (urun_sayisi >= minimum_required) and (not yolluk_var)
-            elif yolluk_roi_selected and not urun_roi_selected:
+            urun_fault = False
+            if urun_roi_selected:
+                if self.state.waiting_products_to_clear:
+                    if urun_sayisi == 0:
+                        self.state.waiting_products_to_clear = False
+                    else:
+                        urun_fault = True
+                else:
+                    if urun_sayisi >= minimum_required:
+                        self.state.waiting_products_to_clear = True
+                    elif urun_algilandi:
+                        urun_fault = True
+
+            if yolluk_roi_selected and not urun_roi_selected:
                 trigger_high = not yolluk_var
+            elif urun_roi_selected and not yolluk_roi_selected:
+                trigger_high = not urun_fault
             else:
-                trigger_high = urun_sayisi >= minimum_required
+                trigger_high = (not urun_fault) and (not yolluk_var)
 
             yeni_yolluk = yolluk_roi_selected and yolluk_var and (not self.state.previous_yolluk_detected)
             yeni_urun = urun_roi_selected and urun_algilandi and (not self.state.previous_urun_detected)
             reset_latch = yeni_yolluk or yeni_urun
 
             signal_zero_reason_parts: list[str] = []
-            if urun_roi_selected and urun_sayisi < minimum_required:
-                signal_zero_reason_parts.append("ürün sayısı eşik değerin altında")
+            if urun_roi_selected and urun_fault:
+                if self.state.waiting_products_to_clear:
+                    signal_zero_reason_parts.append("ürünler sayıldıktan sonra alan 0'a düşmedi")
+                else:
+                    signal_zero_reason_parts.append("ürün sayısı eşik değerin altında")
             if yolluk_roi_selected and yolluk_var:
                 signal_zero_reason_parts.append("yolluk var")
             signal_zero_reason = " ve ".join(signal_zero_reason_parts)
