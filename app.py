@@ -51,6 +51,7 @@ class AppState:
     waiting_products_to_clear: bool = False
     urun_sayim_aktif: bool = False
     urun_sayim_maksimum: int = 0
+    urun_sayim_tepe_goruldu: bool = False
     threshold_fault_latched: bool = False
     threshold_fault_count: int | None = None
 
@@ -405,6 +406,7 @@ class MainWindow(QWidget):
         self.state.waiting_products_to_clear = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
+        self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
@@ -418,6 +420,7 @@ class MainWindow(QWidget):
         self.state.waiting_products_to_clear = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
+        self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
@@ -452,6 +455,7 @@ class MainWindow(QWidget):
         self.state.waiting_products_to_clear = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
+        self.state.urun_sayim_tepe_goruldu = False
         self.update_status("✅ Parametreler güncellendi.")
 
     def activate_mode(self, mode: str) -> None:
@@ -551,20 +555,26 @@ class MainWindow(QWidget):
 
         urun_algilandi = urun_sayisi > 0
         degerlendirilen_urun_sayisi = urun_sayisi
+        urun_tepe_hazir = False
 
         if urun_roi_selected:
             if urun_algilandi:
                 if not self.state.urun_sayim_aktif:
                     self.state.urun_sayim_aktif = True
                     self.state.urun_sayim_maksimum = urun_sayisi
+                    self.state.urun_sayim_tepe_goruldu = False
                 else:
+                    if urun_sayisi < self.state.urun_sayim_maksimum:
+                        self.state.urun_sayim_tepe_goruldu = True
                     self.state.urun_sayim_maksimum = max(self.state.urun_sayim_maksimum, urun_sayisi)
                 degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
             else:
                 if self.state.urun_sayim_aktif:
                     degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
+                    urun_tepe_hazir = True
                 self.state.urun_sayim_aktif = False
                 self.state.urun_sayim_maksimum = 0
+                self.state.urun_sayim_tepe_goruldu = False
 
         if not rois_selected:
             signal = 1
@@ -577,6 +587,7 @@ class MainWindow(QWidget):
             self.state.waiting_products_to_clear = False
             self.state.urun_sayim_aktif = False
             self.state.urun_sayim_maksimum = 0
+            self.state.urun_sayim_tepe_goruldu = False
             self.state.threshold_fault_latched = False
             self.state.threshold_fault_count = None
             self.state.previous_yolluk_detected = yolluk_var
@@ -591,9 +602,10 @@ class MainWindow(QWidget):
                     else:
                         urun_fault = True
                 else:
-                    if degerlendirilen_urun_sayisi >= minimum_required:
+                    urun_sayisi_hazir = urun_tepe_hazir or self.state.urun_sayim_tepe_goruldu or not self.state.urun_sayim_aktif
+                    if urun_sayisi_hazir and degerlendirilen_urun_sayisi >= minimum_required:
                         self.state.waiting_products_to_clear = True
-                    elif urun_algilandi or self.state.previous_urun_detected:
+                    elif urun_sayisi_hazir and (urun_algilandi or self.state.previous_urun_detected):
                         urun_fault = True
                         if not self.state.threshold_fault_latched:
                             self.state.threshold_fault_latched = True
@@ -672,7 +684,7 @@ class MainWindow(QWidget):
                 if self.state.signal_zero_since is None:
                     self.state.signal_zero_since = now
 
-                if (not self.state.threshold_fault_latched) and (now - self.state.signal_zero_since) >= self.state.timeout_seconds:
+                if (now - self.state.signal_zero_since) >= self.state.timeout_seconds:
                     self.state.timeout_latched_high = True
                     self.state.output_latched_high = True
                     self.state.fault_detected_since = None
@@ -684,8 +696,14 @@ class MainWindow(QWidget):
                 self.state.signal_zero_since = None
 
             signal_text = f"Çıkış Sinyali: {signal}"
-            if signal == 0 and signal_zero_reason:
-                signal_text += f" | {signal_zero_reason}"
+            if signal == 0:
+                if signal_zero_reason:
+                    signal_text += f" | {signal_zero_reason}"
+                if self.state.signal_zero_since is not None:
+                    timeout_elapsed = now - self.state.signal_zero_since
+                    signal_text += f" | Zaman aşımı: {timeout_elapsed:.1f}/{self.state.timeout_seconds} sn"
+            elif self.state.timeout_latched_high:
+                signal_text += " | Zaman aşımı sonrası 1'e kilitli"
             self.metric_signal.setText(signal_text)
 
             self.state.previous_yolluk_detected = yolluk_var
