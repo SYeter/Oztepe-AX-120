@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from Electronics import STM32Serial
 from PyQt5.QtCore import QTimer, Qt
-from PyQt5.QtGui import QIcon, QImage, QPixmap
+from PyQt5.QtGui import QIcon, QImage, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
     QFrame,
@@ -148,6 +148,60 @@ class VideoLabel(QLabel):
             self.main_window.assign_roi(roi)
 
 
+class MarqueeLabel(QLabel):
+    def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._full_text = text
+        self._scroll_offset = 0
+        self._text_width = 0
+        self._gap = 48
+        self._timer = QTimer(self)
+        self._timer.setInterval(40)
+        self._timer.timeout.connect(self._tick)
+        self.setText(text)
+
+    def setText(self, text: str) -> None:  # type: ignore[override]
+        self._full_text = text
+        self._text_width = self.fontMetrics().horizontalAdvance(self._full_text)
+        self._scroll_offset = 0
+        self._update_timer_state()
+        self.update()
+
+    def resizeEvent(self, event) -> None:  # type: ignore[override]
+        super().resizeEvent(event)
+        self._update_timer_state()
+
+    def _update_timer_state(self) -> None:
+        if self._text_width > self.contentsRect().width():
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._timer.stop()
+            self._scroll_offset = 0
+
+    def _tick(self) -> None:
+        cycle_length = max(1, self._text_width + self._gap)
+        self._scroll_offset = (self._scroll_offset + 2) % cycle_length
+        self.update()
+
+    def paintEvent(self, event) -> None:  # type: ignore[override]
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.TextAntialiasing, True)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+
+        rect = self.contentsRect()
+        baseline = rect.y() + (rect.height() + self.fontMetrics().ascent() - self.fontMetrics().descent()) // 2
+
+        if self._text_width <= rect.width():
+            painter.drawText(rect, Qt.AlignVCenter | Qt.AlignLeft, self._full_text)
+            return
+
+        first_x = rect.x() - self._scroll_offset
+        second_x = first_x + self._text_width + self._gap
+        painter.drawText(first_x, baseline, self._full_text)
+        painter.drawText(second_x, baseline, self._full_text)
+
+
 class MainWindow(QWidget):
     def __init__(self) -> None:
         super().__init__()
@@ -176,7 +230,7 @@ class MainWindow(QWidget):
 
         self.metric_selected_color = QLabel("Seçili Renk (BGR): -")
         self.metric_count = QLabel("Anlık Ürün: 0")
-        self.metric_signal = QLabel("Çıkış Sinyali: 0")
+        self.metric_signal = MarqueeLabel("Çıkış Sinyali: 0")
         self.metric_yolluk = QLabel("Yolluk: YOK")
 
         self.init_ui()
@@ -300,7 +354,7 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
-        left_panel.setMinimumWidth(420)
+        left_panel.setFixedWidth(420)
 
         root = QHBoxLayout()
         root.addWidget(left_panel, 0)
@@ -517,14 +571,7 @@ class MainWindow(QWidget):
             else:
                 self.state.signal_zero_since = None
 
-            if yolluk_roi_selected and not urun_roi_selected:
-                mode_text = "Mod: Sadece Yolluk"
-            elif urun_roi_selected and not yolluk_roi_selected:
-                mode_text = f"Mod: Sadece Ürün, Eşik: %{self.state.threshold_percent}"
-            else:
-                mode_text = f"Mod: Ürün + Yolluk, Eşik: %{self.state.threshold_percent}"
-
-            signal_text = f"Çıkış Sinyali: {signal} | {mode_text}"
+            signal_text = f"Çıkış Sinyali: {signal}"
             if signal == 0 and signal_zero_reason:
                 signal_text += f" | Sebep: {signal_zero_reason}"
             self.metric_signal.setText(signal_text)
