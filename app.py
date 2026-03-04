@@ -527,8 +527,10 @@ class MainWindow(QWidget):
             self.selection_mode = None
             return
 
-        self.state.single_product_area = max(1, w * h)
-        self.update_status(f"✅ Ürün seçimi tamamlandı: {roi}. Alan bazlı ürün adedi hesaplanacak.")
+        self.state.single_product_area = estimate_single_product_area(selected_area, self.state.selected_hsv_ranges)
+        self.update_status(
+            f"✅ Ürün seçimi tamamlandı: {roi}. Referans tek ürün alanı: {self.state.single_product_area} px."
+        )
         self.selection_mode = None
 
     def update_status(self, message: str) -> None:
@@ -763,6 +765,28 @@ def build_mask_by_selected_color(
     return mask
 
 
+def estimate_single_product_area(
+    roi_bgr: np.ndarray,
+    selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
+) -> int:
+    """Secilen urun ROI'sinde tek urun alanini renk maskesi ile tahmin eder."""
+    mask = build_mask_by_selected_color(roi_bgr, selected_hsv_ranges)
+    kernel = np.ones((3, 3), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contour_areas = [cv2.contourArea(cnt) for cnt in contours if cv2.contourArea(cnt) > 20]
+    if contour_areas:
+        return max(1, int(round(float(np.median(contour_areas)))))
+
+    non_zero_area = int(cv2.countNonZero(mask))
+    if non_zero_area > 0:
+        return non_zero_area
+
+    return max(1, int(roi_bgr.shape[0] * roi_bgr.shape[1]))
+
+
 def extract_hsv_ranges_from_roi(
     roi_bgr: np.ndarray,
     sat_min: int = 35,
@@ -852,18 +876,22 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         urun_mask = mask[y:y + h, x:x + w]
 
         contours, _ = cv2.findContours(urun_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        toplam_kutu_alani = 0
+        toplam_urun_alani = 0.0
+        min_kontur_alani = 120.0
+        if state.single_product_area and state.single_product_area > 0:
+            min_kontur_alani = max(20.0, state.single_product_area * 0.08)
+
         for cnt in contours:
             area = cv2.contourArea(cnt)
-            if area > 120:
+            if area > min_kontur_alani:
                 bx, by, bw, bh = cv2.boundingRect(cnt)
-                toplam_kutu_alani += bw * bh
+                toplam_urun_alani += area
                 cv2.rectangle(debug, (x + bx, y + by), (x + bx + bw, y + by + bh), (0, 255, 255), 2)
 
         if state.single_product_area and state.single_product_area > 0:
-            urun_sayisi = max(0, int(round(toplam_kutu_alani / state.single_product_area)))
+            urun_sayisi = max(0, int(round(toplam_urun_alani / state.single_product_area)))
         else:
-            urun_sayisi = int(toplam_kutu_alani > 0)
+            urun_sayisi = int(toplam_urun_alani > 0)
 
         draw_roi(debug, state.urun_roi, (0, 255, 0), f"Urun Sayisi: {urun_sayisi}")
 
