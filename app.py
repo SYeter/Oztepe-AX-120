@@ -157,7 +157,7 @@ class VideoLabel(QLabel):
 class MarqueeLabel(QLabel):
     def __init__(self, text: str = "", parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._full_text = text
+        self._full_text = ""
         self._scroll_offset = 0
         self._text_width = 0
         self._gap = 48
@@ -167,6 +167,8 @@ class MarqueeLabel(QLabel):
         self.setText(text)
 
     def setText(self, text: str) -> None:  # type: ignore[override]
+        if text == self._full_text:
+            return
         self._full_text = text
         self._text_width = self.fontMetrics().horizontalAdvance(self._full_text)
         self._scroll_offset = 0
@@ -575,7 +577,7 @@ class MainWindow(QWidget):
             signal_zero_reason_parts: list[str] = []
             if urun_roi_selected and urun_fault:
                 if self.state.waiting_products_to_clear:
-                    signal_zero_reason_parts.append("ürünler sayıldıktan sonra alan 0'a düşmedi")
+                    signal_zero_reason_parts.append("Kalıbın arasında ürün var")
                 else:
                     signal_zero_reason_parts.append("ürün sayısı eşik değerin altında")
             if yolluk_roi_selected and yolluk_var:
