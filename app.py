@@ -19,7 +19,6 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -94,7 +93,7 @@ class VideoLabel(QLabel):
         self.start_point: tuple[int, int] | None = None
         self.current_point: tuple[int, int] | None = None
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(460, 260)
+        self.setMinimumSize(0, 0)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(
             "QLabel {"
@@ -295,14 +294,12 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
-        self.left_scroll = QScrollArea()
-        self.left_scroll.setWidgetResizable(True)
-        self.left_scroll.setFrameShape(QFrame.NoFrame)
-        self.left_scroll.setMinimumWidth(400)
-        self.left_scroll.setWidget(left_panel)
+        left_panel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         root = QHBoxLayout()
-        root.addWidget(self.left_scroll, 1)
+        root.setContentsMargins(8, 8, 8, 8)
+        root.setSpacing(8)
+        root.addWidget(left_panel, 1)
         root.addWidget(self.video_label, 1)
         self.setLayout(root)
         self.resize(1160, 680)
