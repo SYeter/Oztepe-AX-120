@@ -312,6 +312,7 @@ class MainWindow(QWidget):
                 border-radius: 8px;
                 padding: 8px;
                 color: #cfe1ff;
+                font-size: 13px;
             }
             """
         )
@@ -381,7 +382,7 @@ class MainWindow(QWidget):
         settings_layout.addWidget(timeout_label, 5, 0)
         settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
-        apply_btn = QPushButton("Yygula")
+        apply_btn = QPushButton("Uygula")
         apply_btn.setStyleSheet("font-size: 11px; padding: 4px 8px;")
         apply_btn.setMinimumWidth(64)
         apply_btn.clicked.connect(self.apply_inputs)
@@ -394,7 +395,7 @@ class MainWindow(QWidget):
         for metric in [self.metric_count, self.metric_signal]:
             metric.setStyleSheet("font-size: 14px; font-weight: 600;")
             if metric is self.metric_signal:
-                metric.setStyleSheet("font-size: 15px; font-weight: 700;")
+                metric.setStyleSheet("font-size: 16px; font-weight: 700;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
@@ -693,6 +694,7 @@ class MainWindow(QWidget):
             self.update_status("❌ Kameradan görüntü alınamadı.")
             return
 
+        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         self.current_frame = frame.copy()
 
         if self.video_label.start_point and self.video_label.current_point:
