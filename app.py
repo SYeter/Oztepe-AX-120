@@ -44,6 +44,7 @@ class AppState:
     kalip_acik_bgr: tuple[float, float, float] | None = None
     kalip_acik_tolerance: float = 18.0
     kalip_acik_mavi_sure_baslangic: float | None = None
+    kalip_acik_referansinda_mavi_var: bool = True
     expected_count: int = 1
     threshold_percent: int = 50
     minimum_urun_count: int = 0
@@ -452,6 +453,7 @@ class MainWindow(QWidget):
         self.state.yolluk_roi = None
         self.state.urun_roi = None
         self.state.kalip_acik_roi = None
+        self.state.kalip_acik_referansinda_mavi_var = True
         self.selection_mode = None
         self.state.output_latched_high = True
         self.state.timeout_latched_high = False
@@ -646,11 +648,18 @@ class MainWindow(QWidget):
 
         mean_bgr = selected_area.reshape(-1, 3).mean(axis=0)
         std_bgr = selected_area.reshape(-1, 3).std(axis=0)
+        blue_mask = get_blue_mask(selected_area)
+        blue_pixel_sayisi = cv2.countNonZero(blue_mask) if blue_mask.size > 0 else 0
+        mavi_var = blue_pixel_sayisi > 0
         self.state.kalip_acik_roi = (x, y, w, h)
         self.state.kalip_acik_bgr = tuple(float(c) for c in mean_bgr)
         self.state.kalip_acik_tolerance = float(np.clip(np.mean(std_bgr) * 2.2 + 10.0, 10.0, 50.0))
         self.state.kalip_acik_mavi_sure_baslangic = None
-        self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
+        self.state.kalip_acik_referansinda_mavi_var = mavi_var
+        if mavi_var:
+            self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
+        else:
+            self.update_status("⚠️ Kalıp referansında mavi yok. Kalıp KAPALI olarak algılanacak.")
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
@@ -1067,6 +1076,9 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
 def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
     if state.kalip_acik_roi is None:
         return True
+    if not state.kalip_acik_referansinda_mavi_var:
+        state.kalip_acik_mavi_sure_baslangic = None
+        return False
 
     x, y, w, h = state.kalip_acik_roi
     h_frame, w_frame = frame.shape[:2]
