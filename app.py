@@ -12,6 +12,7 @@ from PyQt5.QtCore import QTimer, Qt
 from PyQt5.QtGui import QIcon, QImage, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
+    QDialog,
     QFrame,
     QGridLayout,
     QGroupBox,
@@ -42,7 +43,6 @@ class AppState:
     kalip_acik_roi: tuple[int, int, int, int] | None = None
     kalip_acik_bgr: tuple[float, float, float] | None = None
     kalip_acik_tolerance: float = 18.0
-    kalip_acik_mavi_oran: float = 1 / 3
     kalip_acik_mavi_sure_baslangic: float | None = None
     expected_count: int = 1
     threshold_percent: int = 50
@@ -395,11 +395,43 @@ class MainWindow(QWidget):
 
         left_panel.setFixedWidth(420)
 
+        guide_btn = QPushButton("Porgram Kullanma Klavuzu")
+        guide_btn.clicked.connect(self.show_user_guide)
+
+        camera_panel = QWidget()
+        camera_panel_layout = QVBoxLayout(camera_panel)
+        camera_panel_layout.setContentsMargins(0, 0, 0, 0)
+        camera_panel_layout.addWidget(guide_btn, 0, Qt.AlignTop)
+        camera_panel_layout.addWidget(self.video_label, 1)
+
         root = QHBoxLayout()
         root.addWidget(left_panel, 0)
-        root.addWidget(self.video_label, 1)
+        root.addWidget(camera_panel, 1)
         self.setLayout(root)
         self.resize(1160, 680)
+
+    def show_user_guide(self) -> None:
+        guide_dialog = QDialog(self)
+        guide_dialog.setWindowTitle("Program Kullanma Klavuzu")
+        guide_dialog.resize(780, 300)
+
+        guide_text = (
+            "Öncelikle \"Açık Kalıp\" buttonuna basarak kalıbın açık olduğu halindeyken bir pabuç seçiniz.\n"
+            "\"Ürün alanı\" buttonuna basarak kalıpta ürünlerin çıktığı alanı kapsayacak MİNİMUM alanı seçiniz\n"
+            "\"Yolluk alanı\" bölümünde de yolluğun çıktığı alanı aynı şekilde seçiniz\n"
+            "\"Ürün seç\" buttonuna basarak en üstteki ürünlerden BİR TANESİNİ seçiniz. "
+            "Ürün seçme esnasında seçtiğiniz alan ürünün dışına taşmamalı"
+        )
+
+        layout = QVBoxLayout(guide_dialog)
+        guide_label = QLabel(guide_text)
+        guide_label.setWordWrap(True)
+        layout.addWidget(guide_label)
+
+        close_button = QPushButton("Kapat")
+        close_button.clicked.connect(guide_dialog.accept)
+        layout.addWidget(close_button, 0, Qt.AlignRight)
+        guide_dialog.exec_()
 
     def setup_fullscreen_behavior(self) -> None:
         """Uygulama her zaman gercek tam ekran modunda kalsin."""
@@ -950,7 +982,23 @@ def extract_hsv_ranges_from_roi(
 def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, bool, np.ndarray]:
     debug = frame.copy()
     if state.kalip_acik_roi:
-        draw_roi(debug, state.kalip_acik_roi, (255, 120, 80), "Kalıp Referans (Mavi)")
+        x, y, w, h = state.kalip_acik_roi
+        h_frame, w_frame = frame.shape[:2]
+        x = max(0, min(x, w_frame - 1))
+        y = max(0, min(y, h_frame - 1))
+        w = max(1, min(w, w_frame - x))
+        h = max(1, min(h, h_frame - y))
+        roi = frame[y:y + h, x:x + w]
+        blue_mask = get_blue_mask(roi)
+        if blue_mask.size > 0 and cv2.countNonZero(blue_mask) > 0:
+            blue_overlay = np.zeros_like(roi)
+            blue_overlay[:, :] = (255, 0, 0)
+            roi_with_blue = cv2.addWeighted(roi, 0.65, blue_overlay, 0.35, 0)
+            roi_copy = debug[y:y + h, x:x + w]
+            roi_copy[blue_mask > 0] = roi_with_blue[blue_mask > 0]
+            debug[y:y + h, x:x + w] = roi_copy
+
+        draw_roi(debug, state.kalip_acik_roi, (255, 120, 80), "Kalıp Referans")
     if state.selected_hsv_ranges is None:
         if state.yolluk_roi:
             draw_roi(debug, state.yolluk_roi, (255, 0, 0), "Yolluk")
@@ -1030,13 +1078,8 @@ def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
     if roi.size == 0:
         return True
 
-    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    lower_blue = np.array([90, 60, 40], dtype=np.uint8)
-    upper_blue = np.array([140, 255, 255], dtype=np.uint8)
-    blue_mask = cv2.inRange(hsv_roi, lower_blue, upper_blue)
-    blue_ratio = cv2.countNonZero(blue_mask) / blue_mask.size
-
-    if blue_ratio >= state.kalip_acik_mavi_oran:
+    blue_mask = get_blue_mask(roi)
+    if blue_mask.size > 0 and cv2.countNonZero(blue_mask) > 0:
         if state.kalip_acik_mavi_sure_baslangic is None:
             state.kalip_acik_mavi_sure_baslangic = now
         gereken_sure = max(0, state.intervention_seconds)
@@ -1044,6 +1087,15 @@ def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
 
     state.kalip_acik_mavi_sure_baslangic = None
     return False
+
+
+def get_blue_mask(roi: np.ndarray) -> np.ndarray:
+    if roi.size == 0:
+        return np.zeros((0, 0), dtype=np.uint8)
+    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    lower_blue = np.array([90, 60, 40], dtype=np.uint8)
+    upper_blue = np.array([140, 255, 255], dtype=np.uint8)
+    return cv2.inRange(hsv_roi, lower_blue, upper_blue)
 
 
 def main() -> None:
