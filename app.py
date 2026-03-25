@@ -176,7 +176,7 @@ class MarqueeLabel(QLabel):
         self._text_width = 0
         self._gap = 48
         self._timer = QTimer(self)
-        self._timer.setInterval(20)
+        self._timer.setInterval(35)
         self._timer.timeout.connect(self._tick)
         self.setText(text)
 
@@ -203,7 +203,7 @@ class MarqueeLabel(QLabel):
 
     def _tick(self) -> None:
         cycle_length = max(1, self._text_width + self._gap)
-        self._scroll_offset = (self._scroll_offset + 4) % cycle_length
+        self._scroll_offset = (self._scroll_offset + 2) % cycle_length
         self.update()
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
@@ -347,18 +347,38 @@ class MainWindow(QWidget):
         signal_actions_group.setLayout(signal_actions_layout)
 
         settings_group = QGroupBox("Üretim Parametreleri")
+        settings_group.setStyleSheet("QGroupBox { font-size: 14px; }")
         settings_layout = QGridLayout()
-        settings_layout.addWidget(QLabel("Beklenen Ürün Adedi"), 0, 0)
+        settings_layout.setColumnStretch(0, 3)
+        settings_layout.setColumnStretch(1, 2)
+        settings_layout.setColumnStretch(2, 1)
+
+        settings_label_style = "font-size: 14px; font-weight: 600;"
+
+        expected_label = QLabel("Beklenen Ürün Adedi")
+        expected_label.setStyleSheet(settings_label_style)
+        settings_layout.addWidget(expected_label, 0, 0)
         settings_layout.addLayout(self.build_numeric_row(self.expected_input, 1.0), 0, 1)
-        settings_layout.addWidget(QLabel("Verim Eşiği (%)"), 1, 0)
+        threshold_label = QLabel("Verim Eşiği (%)")
+        threshold_label.setStyleSheet(settings_label_style)
+        settings_layout.addWidget(threshold_label, 1, 0)
         settings_layout.addLayout(self.build_numeric_row(self.threshold_input, 1.0), 1, 1)
-        settings_layout.addWidget(QLabel("Minimum Ürün"), 2, 0)
+        minimum_urun_label = QLabel("Minimum Ürün")
+        minimum_urun_label.setStyleSheet(settings_label_style)
+        settings_layout.addWidget(minimum_urun_label, 2, 0)
         settings_layout.addLayout(self.build_numeric_row(self.minimum_urun_input, 1.0), 2, 1)
-        settings_layout.addWidget(QLabel("Yolluk Büyüklüğü (x Ürün)"), 3, 0)
+        yolluk_ratio_label = QLabel("Yolluk Büyüklüğü (x Ürün)")
+        yolluk_ratio_label.setStyleSheet(settings_label_style)
+        yolluk_ratio_label.setWordWrap(True)
+        settings_layout.addWidget(yolluk_ratio_label, 3, 0)
         settings_layout.addLayout(self.build_numeric_row(self.yolluk_ratio_input, 0.5), 3, 1)
-        settings_layout.addWidget(QLabel("Müdahale Süresi (sn)"), 4, 0)
+        intervention_label = QLabel("Müdahale Süresi (sn)")
+        intervention_label.setStyleSheet(settings_label_style)
+        settings_layout.addWidget(intervention_label, 4, 0)
         settings_layout.addLayout(self.build_numeric_row(self.intervention_input, 1.0), 4, 1)
-        settings_layout.addWidget(QLabel("Zaman Aşımı (sn)"), 5, 0)
+        timeout_label = QLabel("Zaman Aşımı (sn)")
+        timeout_label.setStyleSheet(settings_label_style)
+        settings_layout.addWidget(timeout_label, 5, 0)
         settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
         apply_btn = QPushButton("Değerleri Uygula")
@@ -367,8 +387,10 @@ class MainWindow(QWidget):
         settings_group.setLayout(settings_layout)
 
         metrics_group = QGroupBox("Canlı Sonuçlar")
+        metrics_group.setStyleSheet("QGroupBox { font-size: 14px; }")
         metrics_layout = QVBoxLayout()
         for metric in [self.metric_count, self.metric_signal, self.metric_yolluk]:
+            metric.setStyleSheet("font-size: 14px; font-weight: 600;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
