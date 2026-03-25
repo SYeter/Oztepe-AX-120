@@ -416,11 +416,15 @@ class MainWindow(QWidget):
         guide_dialog.resize(780, 300)
 
         guide_text = (
-            "Öncelikle \"Açık Kalıp\" buttonuna basarak kalıbın açık olduğu halindeyken bir pabuç seçiniz.\n"
-            "\"Ürün alanı\" buttonuna basarak kalıpta ürünlerin çıktığı alanı kapsayacak MİNİMUM alanı seçiniz\n"
-            "\"Yolluk alanı\" bölümünde de yolluğun çıktığı alanı aynı şekilde seçiniz\n"
-            "\"Ürün seç\" buttonuna basarak en üstteki ürünlerden BİR TANESİNİ seçiniz. "
-            "Ürün seçme esnasında seçtiğiniz alan ürünün dışına taşmamalı"
+            "Öncelikle kalıbı içerisinde ürün varken, en açık pozisyona getiriniz\n"
+            "\"Açık Kalıp\" butonuna tıklayıp bir pabuç seçiniz.\n"
+            "\"Ürün alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
+            "\"Yolluk alanı\" bölümünde de yolluğun çıktığı alanı aynı şekilde seçiniz.\n"
+            "\"Ürün seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler); "
+            "ürünün dışına taşmayacak, üründeki karanlıkta kalmış bölümleri almayacak şekilde seçiniz. "
+            "Ürün seçmedeki amaç ürünün rengini sisteme tanıtmak eğer mümkünse; ürünün kapsadığı alanı sisteme tanıtmaktır.\n\n"
+            "İyi çalışmalar\n"
+            "Plinsan Plastik A.Ş."
         )
 
         layout = QVBoxLayout(guide_dialog)
