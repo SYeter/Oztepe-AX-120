@@ -263,8 +263,7 @@ class MainWindow(QWidget):
 
         self.metric_count = QLabel("Anlık Ürün: 0")
         self.metric_signal = MarqueeLabel("Çıkış Sinyali: 0")
-        self.metric_yolluk = QLabel("Yolluk: YOK")
-
+        
         self.init_ui()
         self.setup_fullscreen_behavior()
         self.start_timer()
@@ -349,11 +348,12 @@ class MainWindow(QWidget):
         settings_group = QGroupBox("Üretim Parametreleri")
         settings_group.setStyleSheet("QGroupBox { font-size: 14px; }")
         settings_layout = QGridLayout()
-        settings_layout.setColumnStretch(0, 3)
+        settings_layout.setColumnStretch(0, 4)
         settings_layout.setColumnStretch(1, 2)
         settings_layout.setColumnStretch(2, 1)
+        settings_layout.setColumnMinimumWidth(0, 230)
 
-        settings_label_style = "font-size: 14px; font-weight: 600;"
+        settings_label_style = "font-size: 13px; font-weight: 600;"
 
         expected_label = QLabel("Beklenen Ürün Adedi")
         expected_label.setStyleSheet(settings_label_style)
@@ -369,7 +369,7 @@ class MainWindow(QWidget):
         settings_layout.addLayout(self.build_numeric_row(self.minimum_urun_input, 1.0), 2, 1)
         yolluk_ratio_label = QLabel("Yolluk Büyüklüğü (x Ürün)")
         yolluk_ratio_label.setStyleSheet(settings_label_style)
-        yolluk_ratio_label.setWordWrap(True)
+        yolluk_ratio_label.setWordWrap(False)
         settings_layout.addWidget(yolluk_ratio_label, 3, 0)
         settings_layout.addLayout(self.build_numeric_row(self.yolluk_ratio_input, 0.5), 3, 1)
         intervention_label = QLabel("Müdahale Süresi (sn)")
@@ -381,7 +381,9 @@ class MainWindow(QWidget):
         settings_layout.addWidget(timeout_label, 5, 0)
         settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
-        apply_btn = QPushButton("Değerleri Uygula")
+        apply_btn = QPushButton("Yygula")
+        apply_btn.setStyleSheet("font-size: 11px; padding: 4px 8px;")
+        apply_btn.setMinimumWidth(64)
         apply_btn.clicked.connect(self.apply_inputs)
         settings_layout.addWidget(apply_btn, 0, 2, 6, 1)
         settings_group.setLayout(settings_layout)
@@ -389,8 +391,10 @@ class MainWindow(QWidget):
         metrics_group = QGroupBox("Canlı Sonuçlar")
         metrics_group.setStyleSheet("QGroupBox { font-size: 14px; }")
         metrics_layout = QVBoxLayout()
-        for metric in [self.metric_count, self.metric_signal, self.metric_yolluk]:
+        for metric in [self.metric_count, self.metric_signal]:
             metric.setStyleSheet("font-size: 14px; font-weight: 600;")
+            if metric is self.metric_signal:
+                metric.setStyleSheet("font-size: 15px; font-weight: 700;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
@@ -415,9 +419,10 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
-        left_panel.setFixedWidth(420)
+        left_panel.setFixedWidth(500)
 
-        guide_btn = QPushButton("Porgram Kullanma Klavuzu")
+        guide_btn = QPushButton("Program Kullanım Kılavuzu")
+        guide_btn.setStyleSheet("font-size: 16px; padding: 10px 14px;")
         guide_btn.clicked.connect(self.show_user_guide)
 
         camera_panel = QWidget()
@@ -452,6 +457,7 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(guide_dialog)
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
+        guide_label.setStyleSheet("font-size: 16px;")
         layout.addWidget(guide_label)
 
         close_button = QPushButton("Kapat")
@@ -757,7 +763,7 @@ class MainWindow(QWidget):
             self.state.threshold_fault_latched = False
             self.state.threshold_fault_count = None
             self.update_status("ℹ️ Kalıp kapalı. Algılama devam ediyor ancak sinyale müdahale edilmiyor.")
-            self.metric_signal.setText("Çıkış Sinyali: 1 | Kalıp kapalı")
+            self.metric_signal.setText(f"Çıkış Sinyali: 1 | Kalıp kapalı | Yolluk: {'VAR' if yolluk_var else 'YOK'}")
         else:
             urun_fault = False
             if urun_roi_selected:
@@ -859,7 +865,7 @@ class MainWindow(QWidget):
             else:
                 self.state.signal_zero_since = None
 
-            signal_text = f"Çıkış Sinyali: {signal}"
+            signal_text = f"Çıkış Sinyali: {signal} | Yolluk: {'VAR' if yolluk_var else 'YOK'}"
             if signal == 0:
                 if signal_zero_reason:
                     signal_text += f" | {signal_zero_reason}"
@@ -878,12 +884,11 @@ class MainWindow(QWidget):
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(
-            f"Anlık Ürün: {urun_sayisi} | Değerlendirilen: {degerlendirilen_urun_sayisi} | Beklenen: {self.state.expected_count} | Min: {self.state.minimum_urun_count}"
+            f"Anlık Ürün: {urun_sayisi} | Beklenen: {self.state.expected_count} | Min: {self.state.minimum_urun_count}"
         )
         if not rois_selected:
-            self.metric_signal.setText(f"Çıkış Sinyali: {signal} | {SYSTEM_DISABLED_MESSAGE}")
+            self.metric_signal.setText(f"Çıkış Sinyali: {signal} | Yolluk: {'VAR' if yolluk_var else 'YOK'} | {SYSTEM_DISABLED_MESSAGE}")
         self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
-        self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'} | Kalıp: {'AÇIK' if kalip_acik else 'KAPALI'}")
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
