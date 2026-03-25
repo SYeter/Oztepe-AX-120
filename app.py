@@ -35,7 +35,13 @@ class AppState:
     urun_roi: tuple[int, int, int, int] | None = None
     selected_bgr: tuple[int, int, int] | None = None
     selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] | None = None
+    selected_lab: tuple[float, float, float] | None = None
+    selected_lab_tolerance: float = 22.0
+    selected_is_low_sat: bool = False
     single_product_area: int | None = None
+    kalip_acik_roi: tuple[int, int, int, int] | None = None
+    kalip_acik_bgr: tuple[int, int, int] | None = None
+    kalip_acik_tolerance: float = 18.0
     expected_count: int = 1
     threshold_percent: int = 50
     yolluk_min_size_ratio: float = 0.3
@@ -125,7 +131,7 @@ class VideoLabel(QLabel):
         if point is None:
             return
 
-        if self.main_window.selection_mode in ("yolluk", "urun", "color"):
+        if self.main_window.selection_mode in ("yolluk", "urun", "color", "kalip_acik"):
             self.start_point = point
             self.current_point = point
             return
@@ -304,14 +310,17 @@ class MainWindow(QWidget):
         yolluk_btn = QPushButton("Yolluk Alanı Seç")
         urun_btn = QPushButton("Ürün Alanı Seç")
         color_btn = QPushButton("Ürün Seç")
+        kalip_acik_btn = QPushButton("Açık Kalıp")
 
         yolluk_btn.clicked.connect(lambda: self.activate_mode("yolluk"))
         urun_btn.clicked.connect(lambda: self.activate_mode("urun"))
         color_btn.clicked.connect(lambda: self.activate_mode("color"))
+        kalip_acik_btn.clicked.connect(lambda: self.activate_mode("kalip_acik"))
 
         roi_layout.addWidget(yolluk_btn)
         roi_layout.addWidget(urun_btn)
         roi_layout.addWidget(color_btn)
+        roi_layout.addWidget(kalip_acik_btn)
         roi_group.setLayout(roi_layout)
 
         signal_actions_group = QGroupBox("Sinyal ve Alan Yönetimi")
@@ -395,6 +404,7 @@ class MainWindow(QWidget):
     def clear_selected_areas(self) -> None:
         self.state.yolluk_roi = None
         self.state.urun_roi = None
+        self.state.kalip_acik_roi = None
         self.selection_mode = None
         self.state.output_latched_high = True
         self.state.timeout_latched_high = False
@@ -464,6 +474,7 @@ class MainWindow(QWidget):
             "yolluk": "Yolluk ROI modu aktif. Görüntü üzerinde sürükleyerek alan seçin.",
             "urun": "Ürün ROI modu aktif. Görüntü üzerinde sürükleyerek alan seçin.",
             "color": "Ürün seçimi aktif. Tek ürün alanını belirlemek için görüntüde sürükleyerek alan seçin.",
+            "kalip_acik": "Açık kalıp seçimi aktif. Kalıp açıkken sabit görülen alanı sürükleyerek seçin.",
         }
         self.update_status(messages.get(mode, "Mod değiştirildi."))
 
@@ -474,6 +485,8 @@ class MainWindow(QWidget):
         elif self.selection_mode == "urun":
             self.state.urun_roi = roi
             self.update_status(f"✅ Ürün alanı tanımlandı: {roi}")
+        elif self.selection_mode == "kalip_acik":
+            self.pick_kalip_acik_from_roi(roi)
         self.selection_mode = None
 
     def map_label_to_frame(self, x: int, y: int) -> tuple[int, int] | None:
@@ -519,6 +532,13 @@ class MainWindow(QWidget):
 
         mean_bgr = selected_area.reshape(-1, 3).mean(axis=0)
         self.state.selected_bgr = tuple(int(c) for c in mean_bgr)
+        selected_lab = cv2.cvtColor(selected_area, cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
+        lab_mean = selected_lab.mean(axis=0)
+        lab_dist = np.linalg.norm(selected_lab - lab_mean, axis=1)
+        self.state.selected_lab = (float(lab_mean[0]), float(lab_mean[1]), float(lab_mean[2]))
+        self.state.selected_lab_tolerance = float(np.clip(np.percentile(lab_dist, 92) + 8.0, 8.0, 48.0))
+        sat_values = cv2.cvtColor(selected_area, cv2.COLOR_BGR2HSV).reshape(-1, 3)[:, 1]
+        self.state.selected_is_low_sat = float(np.median(sat_values)) < 35.0
         self.state.selected_hsv_ranges = extract_hsv_ranges_from_roi(selected_area)
 
         if not self.state.selected_hsv_ranges:
@@ -530,6 +550,28 @@ class MainWindow(QWidget):
         self.state.single_product_area = max(1, w * h)
         self.update_status(f"✅ Ürün seçimi tamamlandı: {roi}. Alan bazlı ürün adedi hesaplanacak.")
         self.selection_mode = None
+
+    def pick_kalip_acik_from_roi(self, roi: tuple[int, int, int, int]) -> None:
+        if self.current_frame is None:
+            return
+
+        x, y, w, h = roi
+        h_frame, w_frame = self.current_frame.shape[:2]
+        x = max(0, min(x, w_frame - 1))
+        y = max(0, min(y, h_frame - 1))
+        w = max(1, min(w, w_frame - x))
+        h = max(1, min(h, h_frame - y))
+        selected_area = self.current_frame[y:y + h, x:x + w]
+        if selected_area.size == 0:
+            self.update_status("⚠️ Açık kalıp alanı seçilemedi. Tekrar deneyin.")
+            return
+
+        mean_bgr = selected_area.reshape(-1, 3).mean(axis=0)
+        std_bgr = selected_area.reshape(-1, 3).std(axis=0)
+        self.state.kalip_acik_roi = (x, y, w, h)
+        self.state.kalip_acik_bgr = tuple(int(c) for c in mean_bgr)
+        self.state.kalip_acik_tolerance = float(np.clip(np.mean(std_bgr) * 2.2 + 10.0, 10.0, 50.0))
+        self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
     def update_status(self, message: str) -> None:
         self.status_label.setText(message)
@@ -546,6 +588,7 @@ class MainWindow(QWidget):
             cv2.rectangle(frame, self.video_label.start_point, self.video_label.current_point, (0, 165, 255), 2)
 
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
+        kalip_acik = is_kalip_open(frame, self.state)
 
         yolluk_roi_selected = self.state.yolluk_roi is not None
         urun_roi_selected = self.state.urun_roi is not None
@@ -593,6 +636,22 @@ class MainWindow(QWidget):
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
+        elif not kalip_acik:
+            signal = 1
+            signal_zero_reason = ""
+            self.state.output_latched_high = False
+            self.state.timeout_latched_high = False
+            self.state.fault_detected_since = None
+            self.state.signal_zero_since = None
+            self.state.yolluk_clear_since = None
+            self.state.waiting_products_to_clear = False
+            self.state.urun_sayim_aktif = False
+            self.state.urun_sayim_maksimum = 0
+            self.state.urun_sayim_tepe_goruldu = False
+            self.state.threshold_fault_latched = False
+            self.state.threshold_fault_count = None
+            self.update_status("ℹ️ Kalıp kapalı. Algılama devam ediyor ancak sinyale müdahale edilmiyor.")
+            self.metric_signal.setText("Çıkış Sinyali: 1 | Kalıp kapalı")
         else:
             urun_fault = False
             if urun_roi_selected:
@@ -719,7 +778,7 @@ class MainWindow(QWidget):
         if not rois_selected:
             self.metric_signal.setText(f"Çıkış Sinyali: {signal} | {SYSTEM_DISABLED_MESSAGE}")
         self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
-        self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'}")
+        self.metric_yolluk.setText(f"Yolluk: {'VAR' if yolluk_var else 'YOK'} | Kalıp: {'AÇIK' if kalip_acik else 'KAPALI'}")
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
@@ -751,6 +810,9 @@ def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int
 def build_mask_by_selected_color(
     frame: np.ndarray,
     selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
+    selected_lab: tuple[float, float, float] | None,
+    selected_lab_tolerance: float,
+    selected_is_low_sat: bool,
 ) -> np.ndarray:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
@@ -760,12 +822,22 @@ def build_mask_by_selected_color(
         upper = np.array(upper_t, dtype=np.uint8)
         mask = cv2.bitwise_or(mask, cv2.inRange(hsv, lower, upper))
 
-    return mask
+    if selected_lab is None:
+        return mask
+
+    lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB).astype(np.float32)
+    lab_ref = np.array(selected_lab, dtype=np.float32).reshape((1, 1, 3))
+    lab_dist = np.linalg.norm(lab - lab_ref, axis=2)
+    lab_mask = np.where(lab_dist <= selected_lab_tolerance, 255, 0).astype(np.uint8)
+
+    if selected_is_low_sat:
+        return lab_mask
+    return cv2.bitwise_and(mask, lab_mask)
 
 
 def extract_hsv_ranges_from_roi(
     roi_bgr: np.ndarray,
-    sat_min: int = 35,
+    sat_min: int = 20,
     val_min: int = 35,
     hue_padding: int = 6,
 ) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
@@ -795,14 +867,14 @@ def extract_hsv_ranges_from_roi(
         h = int(hue)
         if h != prev + 1:
             ranges.append((
-                (max(segment_start - hue_padding, 0), max(sat_low - 20, 20), max(val_low - 20, 20)),
+                (max(segment_start - hue_padding, 0), max(sat_low - 25, 0), max(val_low - 25, 0)),
                 (min(prev + hue_padding, 179), min(sat_high + 20, 255), min(val_high + 20, 255)),
             ))
             segment_start = h
         prev = h
 
     ranges.append((
-        (max(segment_start - hue_padding, 0), max(sat_low - 20, 20), max(val_low - 20, 20)),
+        (max(segment_start - hue_padding, 0), max(sat_low - 25, 0), max(val_low - 25, 0)),
         (min(prev + hue_padding, 179), min(sat_high + 20, 255), min(val_high + 20, 255)),
     ))
 
@@ -811,6 +883,8 @@ def extract_hsv_ranges_from_roi(
 
 def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, bool, np.ndarray]:
     debug = frame.copy()
+    if state.kalip_acik_roi:
+        draw_roi(debug, state.kalip_acik_roi, (180, 105, 255), "Kalıp Referans")
     if state.selected_hsv_ranges is None:
         if state.yolluk_roi:
             draw_roi(debug, state.yolluk_roi, (255, 0, 0), "Yolluk")
@@ -818,7 +892,13 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
             draw_roi(debug, state.urun_roi, (0, 255, 0), "Urun")
         return 0, False, debug
 
-    mask = build_mask_by_selected_color(frame, state.selected_hsv_ranges)
+    mask = build_mask_by_selected_color(
+        frame,
+        state.selected_hsv_ranges,
+        state.selected_lab,
+        state.selected_lab_tolerance,
+        state.selected_is_low_sat,
+    )
     kernel = np.ones((3, 3), np.uint8)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
@@ -868,6 +948,26 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         draw_roi(debug, state.urun_roi, (0, 255, 0), f"Urun Sayisi: {urun_sayisi}")
 
     return urun_sayisi, yolluk_var, debug
+
+
+def is_kalip_open(frame: np.ndarray, state: AppState) -> bool:
+    if state.kalip_acik_roi is None or state.kalip_acik_bgr is None:
+        return True
+
+    x, y, w, h = state.kalip_acik_roi
+    h_frame, w_frame = frame.shape[:2]
+    x = max(0, min(x, w_frame - 1))
+    y = max(0, min(y, h_frame - 1))
+    w = max(1, min(w, w_frame - x))
+    h = max(1, min(h, h_frame - y))
+    roi = frame[y:y + h, x:x + w]
+    if roi.size == 0:
+        return True
+
+    mean_bgr = roi.reshape(-1, 3).mean(axis=0)
+    selected = np.array(state.kalip_acik_bgr, dtype=np.float32)
+    dist = np.linalg.norm(mean_bgr.astype(np.float32) - selected)
+    return bool(dist <= state.kalip_acik_tolerance)
 
 
 def main() -> None:
