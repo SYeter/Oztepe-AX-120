@@ -312,12 +312,13 @@ class MainWindow(QWidget):
                 border-radius: 8px;
                 padding: 8px;
                 color: #cfe1ff;
-                font-size: 13px;
+                font-size: 16px;
             }
             """
         )
 
         roi_group = QGroupBox("Alan ve Renk Seçimi")
+        roi_group.setStyleSheet("QGroupBox { font-size: 17px; }")
         roi_layout = QHBoxLayout()
 
         yolluk_btn = QPushButton("Yolluk Alanı Seç")
@@ -337,6 +338,7 @@ class MainWindow(QWidget):
         roi_group.setLayout(roi_layout)
 
         signal_actions_group = QGroupBox("Sinyal ve Alan Yönetimi")
+        signal_actions_group.setStyleSheet("QGroupBox { font-size: 17px; }")
         signal_actions_layout = QHBoxLayout()
         clear_areas_btn = QPushButton("Alanları Sil")
         reset_signal_btn = QPushButton("Reset")
@@ -347,7 +349,7 @@ class MainWindow(QWidget):
         signal_actions_group.setLayout(signal_actions_layout)
 
         settings_group = QGroupBox("Üretim Parametreleri")
-        settings_group.setStyleSheet("QGroupBox { font-size: 14px; }")
+        settings_group.setStyleSheet("QGroupBox { font-size: 17px; }")
         settings_layout = QGridLayout()
         settings_layout.setColumnStretch(0, 4)
         settings_layout.setColumnStretch(1, 2)
@@ -383,19 +385,19 @@ class MainWindow(QWidget):
         settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
         apply_btn = QPushButton("Uygula")
-        apply_btn.setStyleSheet("font-size: 11px; padding: 4px 8px;")
-        apply_btn.setMinimumWidth(64)
+        apply_btn.setStyleSheet("font-size: 16px; padding: 10px 14px;")
+        apply_btn.setMinimumWidth(96)
         apply_btn.clicked.connect(self.apply_inputs)
         settings_layout.addWidget(apply_btn, 0, 2, 6, 1)
         settings_group.setLayout(settings_layout)
 
         metrics_group = QGroupBox("Canlı Sonuçlar")
-        metrics_group.setStyleSheet("QGroupBox { font-size: 14px; }")
+        metrics_group.setStyleSheet("QGroupBox { font-size: 17px; }")
         metrics_layout = QVBoxLayout()
         for metric in [self.metric_count, self.metric_signal]:
-            metric.setStyleSheet("font-size: 14px; font-weight: 600;")
+            metric.setStyleSheet("font-size: 16px; font-weight: 600;")
             if metric is self.metric_signal:
-                metric.setStyleSheet("font-size: 16px; font-weight: 700;")
+                metric.setStyleSheet("font-size: 22px; font-weight: 700;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
