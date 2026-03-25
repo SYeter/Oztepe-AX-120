@@ -209,7 +209,12 @@ class MarqueeLabel(QLabel):
     def paintEvent(self, event) -> None:  # type: ignore[override]
         painter = QPainter(self)
         painter.setRenderHint(QPainter.TextAntialiasing, True)
+        painter.setFont(self.font())
         painter.setPen(self.palette().color(self.foregroundRole()))
+        current_text_width = self.fontMetrics().horizontalAdvance(self._full_text)
+        if current_text_width != self._text_width:
+            self._text_width = current_text_width
+            self._update_timer_state()
 
         rect = self.contentsRect()
         baseline = rect.y() + (rect.height() + self.fontMetrics().ascent() - self.fontMetrics().descent()) // 2
@@ -396,8 +401,6 @@ class MainWindow(QWidget):
         metrics_layout = QVBoxLayout()
         for metric in [self.metric_count, self.metric_signal]:
             metric.setStyleSheet("font-size: 16px; font-weight: 600;")
-            if metric is self.metric_signal:
-                metric.setStyleSheet("font-size: 22px; font-weight: 700;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
