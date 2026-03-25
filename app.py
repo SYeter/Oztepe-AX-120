@@ -42,6 +42,8 @@ class AppState:
     kalip_acik_roi: tuple[int, int, int, int] | None = None
     kalip_acik_bgr: tuple[float, float, float] | None = None
     kalip_acik_tolerance: float = 18.0
+    kalip_acik_mavi_oran: float = 1 / 3
+    kalip_acik_mavi_sure_baslangic: float | None = None
     expected_count: int = 1
     threshold_percent: int = 50
     minimum_urun_count: int = 0
@@ -249,6 +251,15 @@ class MainWindow(QWidget):
         self.yolluk_ratio_input = QLineEdit(str(self.state.yolluk_min_size_ratio))
         self.intervention_input = QLineEdit(str(self.state.intervention_seconds))
         self.timeout_input = QLineEdit(str(self.state.timeout_seconds))
+        for input_field in (
+            self.expected_input,
+            self.threshold_input,
+            self.minimum_urun_input,
+            self.yolluk_ratio_input,
+            self.intervention_input,
+            self.timeout_input,
+        ):
+            input_field.setMinimumWidth(72)
 
         self.metric_count = QLabel("Anlık Ürün: 0")
         self.metric_signal = MarqueeLabel("Çıkış Sinyali: 0")
@@ -423,6 +434,7 @@ class MainWindow(QWidget):
         self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.kalip_acik_mavi_sure_baslangic = None
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
     def reset_signal_high(self) -> None:
@@ -437,6 +449,7 @@ class MainWindow(QWidget):
         self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.kalip_acik_mavi_sure_baslangic = None
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
@@ -604,6 +617,7 @@ class MainWindow(QWidget):
         self.state.kalip_acik_roi = (x, y, w, h)
         self.state.kalip_acik_bgr = tuple(float(c) for c in mean_bgr)
         self.state.kalip_acik_tolerance = float(np.clip(np.mean(std_bgr) * 2.2 + 10.0, 10.0, 50.0))
+        self.state.kalip_acik_mavi_sure_baslangic = None
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
     def update_status(self, message: str) -> None:
@@ -621,7 +635,8 @@ class MainWindow(QWidget):
             cv2.rectangle(frame, self.video_label.start_point, self.video_label.current_point, (0, 165, 255), 2)
 
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
-        kalip_acik = is_kalip_open(frame, self.state)
+        now = time.monotonic()
+        kalip_acik = is_kalip_open(frame, self.state, now)
 
         yolluk_roi_selected = self.state.yolluk_roi is not None
         urun_roi_selected = self.state.urun_roi is not None
@@ -732,7 +747,6 @@ class MainWindow(QWidget):
                 signal_zero_reason_parts.append("yolluk var")
             signal_zero_reason = " ve ".join(signal_zero_reason_parts)
 
-            now = time.monotonic()
             fault_detected = not trigger_high
 
             if self.state.timeout_latched_high:
@@ -936,7 +950,7 @@ def extract_hsv_ranges_from_roi(
 def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, bool, np.ndarray]:
     debug = frame.copy()
     if state.kalip_acik_roi:
-        draw_roi(debug, state.kalip_acik_roi, (180, 105, 255), "Kalıp Referans")
+        draw_roi(debug, state.kalip_acik_roi, (255, 120, 80), "Kalıp Referans (Mavi)")
     if state.selected_hsv_ranges is None:
         if state.yolluk_roi:
             draw_roi(debug, state.yolluk_roi, (255, 0, 0), "Yolluk")
@@ -1002,8 +1016,8 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
     return urun_sayisi, yolluk_var, debug
 
 
-def is_kalip_open(frame: np.ndarray, state: AppState) -> bool:
-    if state.kalip_acik_roi is None or state.kalip_acik_bgr is None:
+def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
+    if state.kalip_acik_roi is None:
         return True
 
     x, y, w, h = state.kalip_acik_roi
@@ -1016,10 +1030,20 @@ def is_kalip_open(frame: np.ndarray, state: AppState) -> bool:
     if roi.size == 0:
         return True
 
-    mean_bgr = roi.reshape(-1, 3).mean(axis=0)
-    selected = np.array(state.kalip_acik_bgr, dtype=np.float32)
-    dist = np.linalg.norm(mean_bgr.astype(np.float32) - selected)
-    return bool(dist <= state.kalip_acik_tolerance)
+    hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+    lower_blue = np.array([90, 60, 40], dtype=np.uint8)
+    upper_blue = np.array([140, 255, 255], dtype=np.uint8)
+    blue_mask = cv2.inRange(hsv_roi, lower_blue, upper_blue)
+    blue_ratio = cv2.countNonZero(blue_mask) / blue_mask.size
+
+    if blue_ratio >= state.kalip_acik_mavi_oran:
+        if state.kalip_acik_mavi_sure_baslangic is None:
+            state.kalip_acik_mavi_sure_baslangic = now
+        gereken_sure = max(0, state.intervention_seconds)
+        return (now - state.kalip_acik_mavi_sure_baslangic) >= gereken_sure
+
+    state.kalip_acik_mavi_sure_baslangic = None
+    return False
 
 
 def main() -> None:
