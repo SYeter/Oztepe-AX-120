@@ -1079,7 +1079,12 @@ def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
         return True
 
     blue_mask = get_blue_mask(roi)
-    if blue_mask.size > 0 and cv2.countNonZero(blue_mask) > 0:
+    if blue_mask.size > 0:
+        mavi_alan_orani = cv2.countNonZero(blue_mask) / blue_mask.size
+    else:
+        mavi_alan_orani = 0.0
+
+    if mavi_alan_orani >= 0.10:
         if state.kalip_acik_mavi_sure_baslangic is None:
             state.kalip_acik_mavi_sure_baslangic = now
         gereken_sure = max(0, state.intervention_seconds)
