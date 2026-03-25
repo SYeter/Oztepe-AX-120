@@ -40,10 +40,11 @@ class AppState:
     selected_is_low_sat: bool = False
     single_product_area: int | None = None
     kalip_acik_roi: tuple[int, int, int, int] | None = None
-    kalip_acik_bgr: tuple[int, int, int] | None = None
+    kalip_acik_bgr: tuple[float, float, float] | None = None
     kalip_acik_tolerance: float = 18.0
     expected_count: int = 1
     threshold_percent: int = 50
+    minimum_urun_count: int = 0
     yolluk_min_size_ratio: float = 0.3
     intervention_seconds: int = 2
     timeout_seconds: int = 20
@@ -173,7 +174,7 @@ class MarqueeLabel(QLabel):
         self._text_width = 0
         self._gap = 48
         self._timer = QTimer(self)
-        self._timer.setInterval(40)
+        self._timer.setInterval(20)
         self._timer.timeout.connect(self._tick)
         self.setText(text)
 
@@ -200,7 +201,7 @@ class MarqueeLabel(QLabel):
 
     def _tick(self) -> None:
         cycle_length = max(1, self._text_width + self._gap)
-        self._scroll_offset = (self._scroll_offset + 2) % cycle_length
+        self._scroll_offset = (self._scroll_offset + 4) % cycle_length
         self.update()
 
     def paintEvent(self, event) -> None:  # type: ignore[override]
@@ -244,6 +245,7 @@ class MainWindow(QWidget):
 
         self.expected_input = QLineEdit("1")
         self.threshold_input = QLineEdit("50")
+        self.minimum_urun_input = QLineEdit("0")
         self.yolluk_ratio_input = QLineEdit(str(self.state.yolluk_min_size_ratio))
         self.intervention_input = QLineEdit(str(self.state.intervention_seconds))
         self.timeout_input = QLineEdit(str(self.state.timeout_seconds))
@@ -336,19 +338,21 @@ class MainWindow(QWidget):
         settings_group = QGroupBox("Üretim Parametreleri")
         settings_layout = QGridLayout()
         settings_layout.addWidget(QLabel("Beklenen Ürün Adedi"), 0, 0)
-        settings_layout.addWidget(self.expected_input, 0, 1)
+        settings_layout.addLayout(self.build_numeric_row(self.expected_input, 1.0), 0, 1)
         settings_layout.addWidget(QLabel("Verim Eşiği (%)"), 1, 0)
-        settings_layout.addWidget(self.threshold_input, 1, 1)
-        settings_layout.addWidget(QLabel("Yolluk Büyüklüğü (x Ürün)"), 2, 0)
-        settings_layout.addWidget(self.yolluk_ratio_input, 2, 1)
-        settings_layout.addWidget(QLabel("Müdahale Süresi (sn)"), 3, 0)
-        settings_layout.addWidget(self.intervention_input, 3, 1)
-        settings_layout.addWidget(QLabel("Zaman Aşımı (sn)"), 4, 0)
-        settings_layout.addWidget(self.timeout_input, 4, 1)
+        settings_layout.addLayout(self.build_numeric_row(self.threshold_input, 1.0), 1, 1)
+        settings_layout.addWidget(QLabel("Minimum Ürün"), 2, 0)
+        settings_layout.addLayout(self.build_numeric_row(self.minimum_urun_input, 1.0), 2, 1)
+        settings_layout.addWidget(QLabel("Yolluk Büyüklüğü (x Ürün)"), 3, 0)
+        settings_layout.addLayout(self.build_numeric_row(self.yolluk_ratio_input, 0.5), 3, 1)
+        settings_layout.addWidget(QLabel("Müdahale Süresi (sn)"), 4, 0)
+        settings_layout.addLayout(self.build_numeric_row(self.intervention_input, 1.0), 4, 1)
+        settings_layout.addWidget(QLabel("Zaman Aşımı (sn)"), 5, 0)
+        settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
         apply_btn = QPushButton("Değerleri Uygula")
         apply_btn.clicked.connect(self.apply_inputs)
-        settings_layout.addWidget(apply_btn, 0, 2, 5, 1)
+        settings_layout.addWidget(apply_btn, 0, 2, 6, 1)
         settings_group.setLayout(settings_layout)
 
         metrics_group = QGroupBox("Canlı Sonuçlar")
@@ -444,6 +448,7 @@ class MainWindow(QWidget):
         try:
             expected = int(self.expected_input.text())
             threshold = int(self.threshold_input.text())
+            minimum_urun = int(self.minimum_urun_input.text())
             yolluk_ratio = float(self.yolluk_ratio_input.text())
             intervention_seconds = int(self.intervention_input.text())
             timeout_seconds = int(self.timeout_input.text())
@@ -453,12 +458,14 @@ class MainWindow(QWidget):
 
         self.state.expected_count = max(1, min(999, expected))
         self.state.threshold_percent = max(0, min(100, threshold))
+        self.state.minimum_urun_count = max(0, min(999, minimum_urun))
         self.state.yolluk_min_size_ratio = max(0.01, min(50.0, yolluk_ratio))
         self.state.intervention_seconds = max(0, min(3600, intervention_seconds))
         self.state.timeout_seconds = max(1, min(3600, timeout_seconds))
 
         self.expected_input.setText(str(self.state.expected_count))
         self.threshold_input.setText(str(self.state.threshold_percent))
+        self.minimum_urun_input.setText(str(self.state.minimum_urun_count))
         self.yolluk_ratio_input.setText(f"{self.state.yolluk_min_size_ratio:g}")
         self.intervention_input.setText(str(self.state.intervention_seconds))
         self.timeout_input.setText(str(self.state.timeout_seconds))
@@ -467,6 +474,32 @@ class MainWindow(QWidget):
         self.state.urun_sayim_maksimum = 0
         self.state.urun_sayim_tepe_goruldu = False
         self.update_status("✅ Parametreler güncellendi.")
+
+    def build_numeric_row(self, input_field: QLineEdit, step: float) -> QHBoxLayout:
+        row = QHBoxLayout()
+        minus_btn = QPushButton("-")
+        plus_btn = QPushButton("+")
+        minus_btn.setFixedWidth(36)
+        plus_btn.setFixedWidth(36)
+        minus_btn.clicked.connect(lambda _=False, field=input_field, s=step: self.nudge_numeric_field(field, -s))
+        plus_btn.clicked.connect(lambda _=False, field=input_field, s=step: self.nudge_numeric_field(field, s))
+        row.addWidget(input_field)
+        row.addWidget(minus_btn)
+        row.addWidget(plus_btn)
+        return row
+
+    def nudge_numeric_field(self, field: QLineEdit, delta: float) -> None:
+        text = field.text().strip()
+        try:
+            current_value = float(text)
+        except ValueError:
+            current_value = 0.0
+
+        new_value = current_value + delta
+        if abs(delta - round(delta)) < 1e-9:
+            field.setText(str(int(round(new_value))))
+        else:
+            field.setText(f"{new_value:g}")
 
     def activate_mode(self, mode: str) -> None:
         self.selection_mode = mode
@@ -569,7 +602,7 @@ class MainWindow(QWidget):
         mean_bgr = selected_area.reshape(-1, 3).mean(axis=0)
         std_bgr = selected_area.reshape(-1, 3).std(axis=0)
         self.state.kalip_acik_roi = (x, y, w, h)
-        self.state.kalip_acik_bgr = tuple(int(c) for c in mean_bgr)
+        self.state.kalip_acik_bgr = tuple(float(c) for c in mean_bgr)
         self.state.kalip_acik_tolerance = float(np.clip(np.mean(std_bgr) * 2.2 + 10.0, 10.0, 50.0))
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
@@ -656,7 +689,7 @@ class MainWindow(QWidget):
             urun_fault = False
             if urun_roi_selected:
                 if self.state.waiting_products_to_clear:
-                    if urun_sayisi == 0:
+                    if urun_sayisi <= self.state.minimum_urun_count:
                         self.state.waiting_products_to_clear = False
                     else:
                         urun_fault = True
@@ -773,7 +806,7 @@ class MainWindow(QWidget):
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(
-            f"Anlık Ürün: {urun_sayisi} | Değerlendirilen: {degerlendirilen_urun_sayisi} | Beklenen: {self.state.expected_count}"
+            f"Anlık Ürün: {urun_sayisi} | Değerlendirilen: {degerlendirilen_urun_sayisi} | Beklenen: {self.state.expected_count} | Min: {self.state.minimum_urun_count}"
         )
         if not rois_selected:
             self.metric_signal.setText(f"Çıkış Sinyali: {signal} | {SYSTEM_DISABLED_MESSAGE}")
