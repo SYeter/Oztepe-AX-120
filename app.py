@@ -804,7 +804,26 @@ def normalize_roi(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int, i
 def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int, int, int], label: str) -> None:
     x, y, w, h = roi
     cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-    cv2.putText(frame, label, (x, max(30, y - 12)), cv2.FONT_HERSHEY_SIMPLEX, 1.8, color, 3)
+    tr_to_ascii = str.maketrans({
+        "ç": "c", "ğ": "g", "ı": "i", "ö": "o", "ş": "s", "ü": "u",
+        "Ç": "C", "Ğ": "G", "İ": "I", "Ö": "O", "Ş": "S", "Ü": "U",
+    })
+    safe_label = label.translate(tr_to_ascii)
+    font_scale = max(2.2, frame.shape[1] / 720)
+    thickness = max(4, int(font_scale * 2))
+    text_x = x
+    text_y = max(40, y - 14)
+    cv2.putText(
+        frame,
+        safe_label,
+        (text_x, text_y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        font_scale,
+        (0, 0, 0),
+        thickness + 3,
+        cv2.LINE_AA,
+    )
+    cv2.putText(frame, safe_label, (text_x, text_y), cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness, cv2.LINE_AA)
 
 
 def build_mask_by_selected_color(
