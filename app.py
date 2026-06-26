@@ -122,7 +122,7 @@ class VideoLabel(QLabel):
         self.start_point: tuple[int, int] | None = None
         self.current_point: tuple[int, int] | None = None
         self.setAlignment(Qt.AlignCenter)
-        self.setMinimumSize(460, 260)
+        self.setMinimumSize(360, 240)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.setStyleSheet(
             "QLabel {"
@@ -272,8 +272,9 @@ class MainWindow(QWidget):
             self.intervention_input,
             self.timeout_input,
         ):
-            input_field.setMinimumWidth(88)
-            input_field.setStyleSheet("font-size: 18px; font-weight: 600;")
+            input_field.setMinimumWidth(54)
+            input_field.setMaximumWidth(64)
+            input_field.setStyleSheet("font-size: 14px; font-weight: 600;")
 
         self.metric_count = QLabel("Anlık Ürün: 0")
         self.metric_signal = MarqueeLabel("Çıkış Sinyali: 0")
@@ -288,55 +289,57 @@ class MainWindow(QWidget):
             QWidget {
                 background-color: #0f141d;
                 color: #e9eef8;
-                font-size: 14px;
+                font-size: 12px;
             }
             QGroupBox {
                 border: 1px solid #2d3a4f;
-                border-radius: 12px;
-                margin-top: 10px;
-                padding-top: 12px;
+                border-radius: 8px;
+                margin-top: 7px;
+                padding-top: 8px;
                 background-color: #171f2d;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 6px;
+                left: 8px;
+                padding: 0 4px;
                 color: #9fb3d8;
                 font-weight: bold;
-                font-size: 22px;
+                font-size: 15px;
             }
             QPushButton {
                 background-color: #28364c;
                 border: 1px solid #3d5374;
-                border-radius: 10px;
-                padding: 14px 18px;
+                border-radius: 8px;
+                padding: 6px 8px;
                 font-weight: bold;
-                font-size: 20px;
-                min-height: 44px;
+                font-size: 14px;
+                min-height: 28px;
             }
             QPushButton:hover { background-color: #324666; }
             QPushButton:pressed { background-color: #223149; }
             QLineEdit {
                 background-color: #111925;
                 border: 1px solid #3a4b67;
-                border-radius: 8px;
-                padding: 8px;
+                border-radius: 6px;
+                padding: 4px;
                 color: #f4f7ff;
             }
             QLabel#status {
                 background-color: #182437;
                 border: 1px solid #2c466e;
-                border-radius: 8px;
-                padding: 8px;
+                border-radius: 6px;
+                padding: 5px;
                 color: #cfe1ff;
-                font-size: 16px;
+                font-size: 12px;
             }
             """
         )
 
         roi_group = QGroupBox("Alan ve Renk Seçimi")
-        roi_group.setStyleSheet("QGroupBox { font-size: 22px; font-weight: bold; }")
+        roi_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; }")
         roi_layout = QHBoxLayout()
+        roi_layout.setContentsMargins(6, 6, 6, 6)
+        roi_layout.setSpacing(6)
 
         yolluk_btn = QPushButton("Yolluk Alanı Seç")
         urun_btn = QPushButton("Ürün Alanı Seç")
@@ -355,8 +358,10 @@ class MainWindow(QWidget):
         roi_group.setLayout(roi_layout)
 
         signal_actions_group = QGroupBox("Sinyal ve Alan Yönetimi")
-        signal_actions_group.setStyleSheet("QGroupBox { font-size: 22px; font-weight: bold; }")
+        signal_actions_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; }")
         signal_actions_layout = QHBoxLayout()
+        signal_actions_layout.setContentsMargins(6, 6, 6, 6)
+        signal_actions_layout.setSpacing(6)
         clear_areas_btn = QPushButton("Alanları Sil")
         reset_signal_btn = QPushButton("Reset")
         clear_areas_btn.clicked.connect(self.clear_selected_areas)
@@ -366,14 +371,17 @@ class MainWindow(QWidget):
         signal_actions_group.setLayout(signal_actions_layout)
 
         settings_group = QGroupBox("Üretim Parametreleri")
-        settings_group.setStyleSheet("QGroupBox { font-size: 22px; font-weight: bold; }")
+        settings_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; }")
         settings_layout = QGridLayout()
+        settings_layout.setContentsMargins(8, 8, 8, 8)
+        settings_layout.setHorizontalSpacing(6)
+        settings_layout.setVerticalSpacing(4)
         settings_layout.setColumnStretch(0, 4)
         settings_layout.setColumnStretch(1, 2)
         settings_layout.setColumnStretch(2, 1)
-        settings_layout.setColumnMinimumWidth(0, 230)
+        settings_layout.setColumnMinimumWidth(0, 155)
 
-        settings_label_style = "font-size: 19px; font-weight: 700;"
+        settings_label_style = "font-size: 13px; font-weight: 700;"
 
         expected_label = QLabel("Beklenen Ürün Adedi")
         expected_label.setStyleSheet(settings_label_style)
@@ -402,24 +410,26 @@ class MainWindow(QWidget):
         settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
         apply_btn = QPushButton("Uygula")
-        apply_btn.setStyleSheet("font-size: 20px; font-weight: bold; padding: 14px 18px;")
-        apply_btn.setMinimumWidth(96)
+        apply_btn.setStyleSheet("font-size: 14px; font-weight: bold; padding: 6px 8px;")
+        apply_btn.setMinimumWidth(70)
         apply_btn.clicked.connect(self.apply_inputs)
         settings_layout.addWidget(apply_btn, 0, 2, 6, 1)
         settings_group.setLayout(settings_layout)
 
         metrics_group = QGroupBox("Canlı Sonuçlar")
-        metrics_group.setStyleSheet("QGroupBox { font-size: 22px; font-weight: bold; }")
+        metrics_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; }")
         metrics_layout = QVBoxLayout()
+        metrics_layout.setContentsMargins(6, 6, 6, 6)
+        metrics_layout.setSpacing(5)
         for metric in [self.metric_count, self.metric_signal]:
-            metric.setStyleSheet("font-size: 18px; font-weight: 600;")
+            metric.setStyleSheet("font-size: 14px; font-weight: 600;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
                 " background-color: #111925;"
                 " border: 1px solid #2f3f59;"
-                " border-radius: 8px;"
-                " padding: 6px;"
+                " border-radius: 6px;"
+                " padding: 3px;"
                 "}"
             )
             row = QHBoxLayout(card)
@@ -430,6 +440,8 @@ class MainWindow(QWidget):
 
         left_panel = QWidget()
         left_panel_layout = QVBoxLayout(left_panel)
+        left_panel_layout.setContentsMargins(0, 0, 0, 0)
+        left_panel_layout.setSpacing(5)
         left_panel_layout.addWidget(roi_group)
         left_panel_layout.addWidget(signal_actions_group)
         left_panel_layout.addWidget(settings_group)
@@ -437,10 +449,10 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
-        left_panel.setFixedWidth(560)
+        left_panel.setFixedWidth(385)
 
         guide_btn = QPushButton("Nasıl Kullanılır")
-        guide_btn.setStyleSheet("font-size: 20px; font-weight: bold; padding: 14px 18px;")
+        guide_btn.setStyleSheet("font-size: 14px; font-weight: bold; padding: 6px 8px;")
         guide_btn.clicked.connect(self.show_user_guide)
 
         camera_panel = QWidget()
@@ -450,10 +462,12 @@ class MainWindow(QWidget):
         camera_panel_layout.addWidget(self.video_label, 1)
 
         root = QHBoxLayout()
+        root.setContentsMargins(6, 6, 6, 6)
+        root.setSpacing(6)
         root.addWidget(left_panel, 0)
         root.addWidget(camera_panel, 1)
         self.setLayout(root)
-        self.resize(1160, 680)
+        self.resize(800, 600)
 
     def show_user_guide(self) -> None:
         guide_dialog = QDialog(self)
@@ -476,7 +490,7 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(guide_dialog)
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
-        guide_label.setStyleSheet("font-size: 24px; font-weight: bold; line-height: 130%;")
+        guide_label.setStyleSheet("font-size: 18px; font-weight: bold; line-height: 120%;")
         layout.addWidget(guide_label)
 
         close_button = QPushButton("Kapat")
@@ -657,10 +671,12 @@ class MainWindow(QWidget):
 
     def build_numeric_row(self, input_field: QLineEdit, step: float) -> QHBoxLayout:
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(4)
         minus_btn = QPushButton("-")
         plus_btn = QPushButton("+")
-        minus_btn.setFixedWidth(56)
-        plus_btn.setFixedWidth(56)
+        minus_btn.setFixedWidth(34)
+        plus_btn.setFixedWidth(34)
         minus_btn.setAutoRepeat(True)
         plus_btn.setAutoRepeat(True)
         minus_btn.setAutoRepeatDelay(350)
