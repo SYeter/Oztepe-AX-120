@@ -23,6 +23,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -254,9 +255,8 @@ class MainWindow(QWidget):
 
         self.video_label = VideoLabel(self)
 
-        self.status_label = QLabel("Hazır. ROI veya renk seçimi için aşağıdaki butonları kullanın.")
-        self.status_label.setObjectName("status")
-        self.status_label.setWordWrap(True)
+        self.current_status_message = "Hazır. ROI veya renk seçimi için aşağıdaki butonları kullanın."
+        self.current_signal_text = "Çıkış Sinyali: 0"
 
         self.expected_input = QLineEdit(str(self.state.expected_count))
         self.threshold_input = QLineEdit(str(self.state.threshold_percent))
@@ -277,7 +277,7 @@ class MainWindow(QWidget):
             input_field.setStyleSheet("font-size: 14px; font-weight: 600;")
 
         self.metric_count = QLabel("Anlık Ürün: 0")
-        self.metric_signal = MarqueeLabel("Çıkış Sinyali: 0")
+        self.metric_signal = MarqueeLabel(self.build_signal_info_text())
         
         self.init_ui()
         self.setup_fullscreen_behavior()
@@ -341,8 +341,8 @@ class MainWindow(QWidget):
         roi_layout.setContentsMargins(6, 6, 6, 6)
         roi_layout.setSpacing(6)
 
-        yolluk_btn = QPushButton("Yolluk Alanı Seç")
-        urun_btn = QPushButton("Ürün Alanı Seç")
+        yolluk_btn = QPushButton("Yolluk Alanı")
+        urun_btn = QPushButton("Ürün Alanı")
         color_btn = QPushButton("Ürün Seç")
         kalip_acik_btn = QPushButton("Pabuc Seç")
 
@@ -421,8 +421,9 @@ class MainWindow(QWidget):
         metrics_layout = QVBoxLayout()
         metrics_layout.setContentsMargins(6, 6, 6, 6)
         metrics_layout.setSpacing(5)
+        metric_label_style = "font-size: 14px; font-weight: 600;"
         for metric in [self.metric_count, self.metric_signal]:
-            metric.setStyleSheet("font-size: 14px; font-weight: 600;")
+            metric.setStyleSheet(metric_label_style)
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
@@ -446,7 +447,6 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(signal_actions_group)
         left_panel_layout.addWidget(settings_group)
         left_panel_layout.addWidget(metrics_group)
-        left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
         left_panel.setFixedWidth(385)
@@ -488,16 +488,25 @@ class MainWindow(QWidget):
         )
 
         layout = QVBoxLayout(guide_dialog)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
-        guide_label.setStyleSheet("font-size: 18px; font-weight: bold; line-height: 120%;")
-        layout.addWidget(guide_label)
+        guide_label.setStyleSheet("font-size: 14px; font-weight: bold; line-height: 115%;")
+        guide_label.setContentsMargins(6, 6, 6, 6)
+        scroll_area.setWidget(guide_label)
+        layout.addWidget(scroll_area, 1)
 
         close_button = QPushButton("Kapat")
         close_button.clicked.connect(guide_dialog.accept)
         layout.addWidget(close_button, 0, Qt.AlignRight)
-        guide_dialog.setWindowState(guide_dialog.windowState() | Qt.WindowFullScreen)
-        guide_dialog.showFullScreen()
+        guide_dialog.resize(760, 560)
+        guide_dialog.setMaximumSize(780, 580)
         guide_dialog.exec_()
 
     def setup_fullscreen_behavior(self) -> None:
@@ -815,8 +824,26 @@ class MainWindow(QWidget):
         self.save_settings()
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
+    def build_signal_info_text(self) -> str:
+        if self.current_status_message:
+            return f"{self.current_signal_text} | Bilgi: {self.current_status_message}"
+        return self.current_signal_text
+
+    def refresh_signal_info(self, color: str | None = None) -> None:
+        style = "font-size: 14px; font-weight: 600;"
+        if color:
+            style += f" color: {color};"
+        self.metric_signal.setStyleSheet(style)
+        self.metric_signal.setText(self.build_signal_info_text())
+
+    def set_signal_text(self, text: str, signal: int | None = None) -> None:
+        self.current_signal_text = text
+        color = None if signal is None else ("#66df8f" if signal else "#ff6f6f")
+        self.refresh_signal_info(color)
+
     def update_status(self, message: str) -> None:
-        self.status_label.setText(message)
+        self.current_status_message = message
+        self.refresh_signal_info()
 
     def update_frame(self) -> None:
         ret, frame = self.cap.read()
@@ -919,7 +946,7 @@ class MainWindow(QWidget):
             self.state.threshold_fault_latched = False
             self.state.threshold_fault_count = None
             self.update_status("ℹ️ Kalıp kapalı. Algılama devam ediyor ancak sinyale müdahale edilmiyor.")
-            self.metric_signal.setText("Çıkış Sinyali: 1 | Kalıp kapalı")
+            self.set_signal_text("Çıkış Sinyali: 1 | Kalıp kapalı", 1)
         else:
             urun_fault = False
             if urun_roi_selected:
@@ -1030,7 +1057,7 @@ class MainWindow(QWidget):
                     )
             elif self.state.timeout_latched_high:
                 signal_text += " | Zaman aşımı sonrası 1'e kilitli"
-            self.metric_signal.setText(signal_text)
+            self.set_signal_text(signal_text, signal)
 
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
@@ -1042,8 +1069,9 @@ class MainWindow(QWidget):
             f"Anlık Ürün: {urun_sayisi} | Beklenen: {int(round(minimum_required))} | Min: {self.state.minimum_urun_count}"
         )
         if not rois_selected:
-            self.metric_signal.setText(f"Çıkış Sinyali: {signal}")
-        self.metric_signal.setStyleSheet(f"color: {'#66df8f' if signal else '#ff6f6f'};")
+            self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
+        else:
+            self.refresh_signal_info("#66df8f" if signal else "#ff6f6f")
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape

@@ -35,11 +35,11 @@ python app.py
 Program, `app.py` içinde tanımlı RTSP adresine otomatik bağlanır.
 
 ## Arayüz Kullanımı
-1. **Yolluk Alanı Seç** veya **Ürün Alanı Seç** butonuna tıklayın.
+1. **Yolluk Alanı** veya **Ürün Alanı** butonuna tıklayın.
 2. Kamera görüntüsü üzerinde sürükleyip bırakarak ROI tanımlayın.
 3. **Renk Seç** ile tespit edilecek rengi görüntüden seçin.
 4. Beklenen adet ve eşik değerlerini girip **Değerleri Uygula** deyin.
-5. Sonuçları soldaki canlı kartlardan takip edin.
+5. Sonuçları ve bilgi mesajlarını soldaki canlı kartlardan takip edin.
 
 ## Notlar
 - Aydınlatma değişimlerinde renk toleransı için `build_mask_by_selected_color` fonksiyonundaki `tol` değeri güncellenebilir.
