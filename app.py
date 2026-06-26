@@ -1142,8 +1142,10 @@ def get_blue_mask(roi: np.ndarray) -> np.ndarray:
     if roi.size == 0:
         return np.zeros((0, 0), dtype=np.uint8)
     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    lower_blue = np.array([85, 35, 30], dtype=np.uint8)
-    upper_blue = np.array([145, 255, 255], dtype=np.uint8)
+    # Açık kalıp kontrolünde yalnızca belirgin mavi tonları algılansın;
+    # düşük doygunluk/parlaklık değerleri karanlık bölgeleri yanlışlıkla mavi sayabiliyor.
+    lower_blue = np.array([95, 80, 50], dtype=np.uint8)
+    upper_blue = np.array([135, 255, 255], dtype=np.uint8)
     return cv2.inRange(hsv_roi, lower_blue, upper_blue)
 
 
