@@ -75,6 +75,8 @@ class AppState:
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
 YOLLUK_REARM_SECONDS = 2
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
+METRIC_OK_COLOR = "#66df8f"
+METRIC_FAIL_COLOR = "#ff6f6f"
 
 
 class NoBufferVideoCapture:
@@ -278,7 +280,7 @@ class MainWindow(QWidget):
             input_field.setMaximumWidth(64)
             input_field.setStyleSheet("font-size: 14px; font-weight: 600;")
 
-        self.metric_count = QLabel("Alınan ürün: 0")
+        self.metric_count = QLabel()
         self.metric_signal = MarqueeLabel(self.build_signal_info_text())
         
         self.init_ui()
@@ -843,16 +845,28 @@ class MainWindow(QWidget):
 
     def set_signal_text(self, text: str, signal: int | None = None) -> None:
         self.current_signal_text = text
-        color = None if signal is None else ("#66df8f" if signal else "#ff6f6f")
+        color = None if signal is None else (METRIC_OK_COLOR if signal else METRIC_FAIL_COLOR)
         self.refresh_signal_info(color)
 
     def set_fault_text(self, text: str = "") -> None:
         self.current_fault_text = text
-        self.refresh_signal_info("#ff6f6f" if text else None)
+        self.refresh_signal_info(METRIC_FAIL_COLOR if text else None)
 
     def update_status(self, message: str) -> None:
         self.current_status_message = message
         self.refresh_signal_info()
+
+    def build_metric_count_text(self, minimum_required: float) -> str:
+        expected_text = str(int(round(minimum_required)))
+        obtained_count = self.state.last_completed_product_count
+        yield_percent = self.state.last_completed_yield_percent
+        obtained_color = METRIC_OK_COLOR if obtained_count >= minimum_required else METRIC_FAIL_COLOR
+        yield_color = METRIC_OK_COLOR if yield_percent >= self.state.threshold_percent else METRIC_FAIL_COLOR
+        return (
+            f"Beklenen: {expected_text} | "
+            f"<span style='color: {obtained_color};'>Elde Edilen: {obtained_count}</span> | "
+            f"<span style='color: {yield_color};'>Verim: %{yield_percent}</span>"
+        )
 
     def update_frame(self) -> None:
         ret, frame = self.cap.read()
@@ -942,7 +956,15 @@ class MainWindow(QWidget):
                         urun_fault = True
                 else:
                     urun_sayisi_hazir = urun_tepe_hazir or self.state.urun_sayim_tepe_goruldu or not self.state.urun_sayim_aktif
-                    if urun_sayisi_hazir:
+                    deger_guncellemeye_hazir = (
+                        urun_sayisi_hazir
+                        and (
+                            degerlendirilen_urun_sayisi > self.state.minimum_urun_count
+                            or self.state.previous_urun_detected
+                            or urun_tepe_hazir
+                        )
+                    )
+                    if deger_guncellemeye_hazir:
                         self.state.last_completed_product_count = degerlendirilen_urun_sayisi
                         self.state.last_completed_yield_percent = int(
                             round((degerlendirilen_urun_sayisi / max(1, self.state.expected_count)) * 100)
@@ -1061,9 +1083,7 @@ class MainWindow(QWidget):
 
         STM32Serial.STM32Serial(chr(signal))
 
-        self.metric_count.setText(
-            f"Alınan ürün: {self.state.last_completed_product_count} | Beklenen: {int(round(minimum_required))} | Verim: %{self.state.last_completed_yield_percent}"
-        )
+        self.metric_count.setText(self.build_metric_count_text(minimum_required))
         if signal != 0:
             self.set_fault_text("")
         self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
