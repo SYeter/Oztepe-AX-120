@@ -492,7 +492,9 @@ class MainWindow(QWidget):
 <span style="color: {guide_blue};">&quot;Pabuç Seç&quot;</span> butonuna tıklayarak bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.<br>
 <span style="color: {guide_blue};">&quot;Ürün Alanı&quot;</span> butonuna tıklayarak kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.<br>
 <span style="color: {guide_blue};">&quot;Yolluk Alanı&quot;</span> bölümünde de yolluğun çıktığı en küçük alanı seçiniz. Böylece sistem, bu alanların dışındaki unsurları algılamaz.<br>
-<span style="color: {guide_blue};">&quot;Ürün Seç&quot;</span> butonuna tıklayarak en net görünen ürünlerden birini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. Ürün seçiminin amacı, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.</p>
+<span style="color: {guide_blue};">&quot;Ürün Seç&quot;</span>
+Bu adımda amaç, ürünün boyutunu ve rengini sisteme tanıtmaktır. Tek bir ürün seçmek zorunda değilsiniz. Sayım sonucu beklediğinizden farklı çıkarsa, daha geniş veya daha dar bir bölge seçerek ürünü yeniden tanıtabilirsiniz. 
+Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin. Ürün dışındaki bölgelerin seçime fazla dahil edilmesi, yazılımın renk algısını olumsuz etkileyebilir ve sayım doğruluğunu düşürebilir.
 
 <p><span style="color: {METRIC_FAIL_COLOR};">AKŞAM SAATLERİNDE (GENELLİKLE SAAT 19.00'DAN SONRA) AX-90 MAKİNESİNİN ÜZERİNDEKİ SPOT IŞIK AÇILMALI VE KALIBI KISMEN DE OLSA AYDINLATACAK BİR POZİSYONA GETİRİLMELİDİR.</span> Aksi takdirde hava karardıktan sonra sistemden verim alınamaz. Işık açık olduğu hâlde ürün veya yolluk algılamasında sorun yaşanırsa, yukarıdaki ürün seçme işlemi tekrarlanabilir veya makineye ilave bir aydınlatma sistemi eklenebilir.</p>
 
