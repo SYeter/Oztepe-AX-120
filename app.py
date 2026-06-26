@@ -75,6 +75,8 @@ class AppState:
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
 YOLLUK_REARM_SECONDS = 2
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
+METRIC_OK_COLOR = "#66df8f"
+METRIC_FAIL_COLOR = "#ff6f6f"
 
 
 class NoBufferVideoCapture:
@@ -278,7 +280,7 @@ class MainWindow(QWidget):
             input_field.setMaximumWidth(64)
             input_field.setStyleSheet("font-size: 14px; font-weight: 600;")
 
-        self.metric_count = QLabel("Alınan ürün: 0")
+        self.metric_count = QLabel()
         self.metric_signal = MarqueeLabel(self.build_signal_info_text())
         
         self.init_ui()
@@ -476,29 +478,43 @@ class MainWindow(QWidget):
         guide_dialog.setWindowTitle("Program Kullanma Klavuzu")
 
         guide_text = (
+    "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. "
+    "Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.\n\n"
 
-            "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.\n\n"
+    "Kullanım\n"
+    "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
+    "\"Pabuç Seç\" butonuna tıklayarak bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
+    "\"Ürün Alanı\" butonuna tıklayarak kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
+    "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz. Böylece sistem, bu alanların dışındaki unsurları algılamaz.\n"
+    "\"Ürün Seç\" butonuna tıklayarak en net görünen ürünlerden birini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
+    "Ürün seçiminin amacı, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. "
+    "Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
 
-            "Kullanım\n"
-            "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
-            "\"Pabuç Seç\" butonuna tıklayıp bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
-            "\"Ürün Alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
-            "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz ki sistem harici unsurları algılamasın.\n"
-            "\"Ürün Seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
-            "Ürün seçmedeki amaç, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
-            "Günün farklı saatlerinde oluşan ışık değişiklikleri nedeniyle algılamada aksama yaşanırsa, gündüz ve gece için birer kez bu işlemi tekrarlamanız gerekebilir. Ancak çoğu durumda buna gerek kalmaz.\n"
-            "Aşağıya düşmüş yollukları algılayıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. Bu değeri fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. En doğru ayar, bir yolluğu kolona asılı kalmış şekilde bırakıp ayarı bu durumda yapmaktır.\n"
-            "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
-            "\"Alanları Sil\" butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.\n"
-            "\"Reset\" butonu, o anki hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem bir defaya mahsus baskı alınmasına izin verir.\n"
-            "\"Sistem Bilgisi\" bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.\n\n"
+    "AKŞAM SAATLERİNDE (GENELLİKLE SAAT 19.00'DAN SONRA) AX-90 MAKİNESİNİN ÜZERİNDEKİ SPOT IŞIK AÇILMALI VE KALIBI KISMEN DE OLSA AYDINLATACAK BİR POZİSYONA GETİRİLMELİDİR. "
+    "Aksi takdirde hava karardıktan sonra sistemden verim alınamaz. "
+    "Işık açık olduğu hâlde ürün veya yolluk algılamasında sorun yaşanırsa, yukarıdaki ürün seçme işlemi tekrarlanabilir veya makineye ilave bir aydınlatma sistemi eklenebilir.\n"
 
-            "Parametreler\n"
-            "Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. Örneğin ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıp kapanmıyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.\n"
-            "\"Müdahale Süresi\", sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.\n\n"
+    "Aşağıya düşmüş yollukların algılanıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. "
+    "Bu değeri gereğinden fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. "
+    "En doğru ayar için bir yolluğu kolona asılı kalacak şekilde bırakıp ayarı bu durumda yapmanız önerilir.\n"
 
-            "Verim\n"
-            "Örneğin belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler.")
+    "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
+
+    "\"Alanları Sil\" butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.\n"
+    "\"Reset\" butonu, mevcut hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem, yalnızca bir defaya mahsus olmak üzere baskı alınmasına izin verir.\n"
+    "\"Sistem Bilgisi\" bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.\n\n"
+
+    "Parametreler\n"
+    "Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. "
+    "Örneğin, ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıbın kapanmasına izin vermiyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. "
+    "Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.\n"
+
+    "\"Müdahale Süresi\", sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. "
+    "Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.\n\n"
+
+    "Verim\n"
+    "Örneğin, belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler."
+)
 
         layout = QVBoxLayout(guide_dialog)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -843,16 +859,28 @@ class MainWindow(QWidget):
 
     def set_signal_text(self, text: str, signal: int | None = None) -> None:
         self.current_signal_text = text
-        color = None if signal is None else ("#66df8f" if signal else "#ff6f6f")
+        color = None if signal is None else (METRIC_OK_COLOR if signal else METRIC_FAIL_COLOR)
         self.refresh_signal_info(color)
 
     def set_fault_text(self, text: str = "") -> None:
         self.current_fault_text = text
-        self.refresh_signal_info("#ff6f6f" if text else None)
+        self.refresh_signal_info(METRIC_FAIL_COLOR if text else None)
 
     def update_status(self, message: str) -> None:
         self.current_status_message = message
         self.refresh_signal_info()
+
+    def build_metric_count_text(self, minimum_required: float) -> str:
+        expected_text = str(int(round(minimum_required)))
+        obtained_count = self.state.last_completed_product_count
+        yield_percent = self.state.last_completed_yield_percent
+        obtained_color = METRIC_OK_COLOR if obtained_count >= minimum_required else METRIC_FAIL_COLOR
+        yield_color = METRIC_OK_COLOR if yield_percent >= self.state.threshold_percent else METRIC_FAIL_COLOR
+        return (
+            f"Beklenen: {expected_text} | "
+            f"<span style='color: {obtained_color};'>Elde Edilen: {obtained_count}</span> | "
+            f"<span style='color: {yield_color};'>Verim: %{yield_percent}</span>"
+        )
 
     def update_frame(self) -> None:
         ret, frame = self.cap.read()
@@ -942,7 +970,15 @@ class MainWindow(QWidget):
                         urun_fault = True
                 else:
                     urun_sayisi_hazir = urun_tepe_hazir or self.state.urun_sayim_tepe_goruldu or not self.state.urun_sayim_aktif
-                    if urun_sayisi_hazir:
+                    deger_guncellemeye_hazir = (
+                        urun_sayisi_hazir
+                        and (
+                            degerlendirilen_urun_sayisi > self.state.minimum_urun_count
+                            or self.state.previous_urun_detected
+                            or urun_tepe_hazir
+                        )
+                    )
+                    if deger_guncellemeye_hazir:
                         self.state.last_completed_product_count = degerlendirilen_urun_sayisi
                         self.state.last_completed_yield_percent = int(
                             round((degerlendirilen_urun_sayisi / max(1, self.state.expected_count)) * 100)
@@ -1061,9 +1097,7 @@ class MainWindow(QWidget):
 
         STM32Serial.STM32Serial(chr(signal))
 
-        self.metric_count.setText(
-            f"Alınan ürün: {self.state.last_completed_product_count} | Beklenen: {int(round(minimum_required))} | Verim: %{self.state.last_completed_yield_percent}"
-        )
+        self.metric_count.setText(self.build_metric_count_text(minimum_required))
         if signal != 0:
             self.set_fault_text("")
         self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
@@ -1250,7 +1284,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
             else:
                 alan_orani = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
                 yolluk_var = alan_orani > 0.03
-        draw_roi(debug, state.yolluk_roi, (255, 0, 0), f"Yolluk {'VAR' if yolluk_var else 'YOK'}")
+        draw_roi(debug, state.yolluk_roi, (255, 0, 0), f"Yolluk {'Var' if yolluk_var else 'Yok'}")
 
     urun_sayisi = 0
     if state.urun_roi:
