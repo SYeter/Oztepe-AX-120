@@ -68,6 +68,8 @@ class AppState:
     threshold_fault_count: int | None = None
     consecutive_low_yield_cycles: int = 0
     low_yield_cycle_recorded: bool = False
+    last_completed_product_count: int = 0
+    last_completed_yield_percent: int = 0
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
@@ -276,7 +278,7 @@ class MainWindow(QWidget):
             input_field.setMaximumWidth(64)
             input_field.setStyleSheet("font-size: 14px; font-weight: 600;")
 
-        self.metric_count = QLabel("Anlık Ürün: 0")
+        self.metric_count = QLabel("Alınan ürün: 0")
         self.metric_signal = MarqueeLabel(self.build_signal_info_text())
         
         self.init_ui()
@@ -560,6 +562,8 @@ class MainWindow(QWidget):
             "threshold_fault_count",
             "consecutive_low_yield_cycles",
             "low_yield_cycle_recorded",
+            "last_completed_product_count",
+            "last_completed_yield_percent",
         }
         for key, value in saved_settings.items():
             if key in runtime_only_fields or not hasattr(self.state, key):
@@ -584,6 +588,8 @@ class MainWindow(QWidget):
             "threshold_fault_count",
             "consecutive_low_yield_cycles",
             "low_yield_cycle_recorded",
+            "last_completed_product_count",
+            "last_completed_yield_percent",
         }
         settings = {
             key: value
@@ -936,6 +942,11 @@ class MainWindow(QWidget):
                         urun_fault = True
                 else:
                     urun_sayisi_hazir = urun_tepe_hazir or self.state.urun_sayim_tepe_goruldu or not self.state.urun_sayim_aktif
+                    if urun_sayisi_hazir:
+                        self.state.last_completed_product_count = degerlendirilen_urun_sayisi
+                        self.state.last_completed_yield_percent = int(
+                            round((degerlendirilen_urun_sayisi / max(1, self.state.expected_count)) * 100)
+                        )
                     if urun_sayisi_hazir and degerlendirilen_urun_sayisi >= minimum_required:
                         self.state.consecutive_low_yield_cycles = 0
                         self.state.low_yield_cycle_recorded = True
@@ -970,7 +981,7 @@ class MainWindow(QWidget):
                 if self.state.threshold_fault_latched:
                     threshold_fault_count = self.state.threshold_fault_count if self.state.threshold_fault_count is not None else 0
                     eksik_urun = max(0, int(round(minimum_required)) - threshold_fault_count)
-                    signal_zero_reason_parts.append(f"Düşük Verim: {eksik_urun} adet ürün eksik")
+                    signal_zero_reason_parts.append(f"Verimsiz Baskı: {eksik_urun} adet ürün eksik")
                 elif self.state.waiting_products_to_clear:
                     signal_zero_reason_parts.append("Kalmış Ürün")
                 else:
@@ -1051,7 +1062,7 @@ class MainWindow(QWidget):
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(
-            f"Anlık Ürün: {urun_sayisi} | Beklenen: {int(round(minimum_required))} | Min: {self.state.minimum_urun_count}"
+            f"Alınan ürün: {self.state.last_completed_product_count} | Beklenen: {int(round(minimum_required))} | Verim: %{self.state.last_completed_yield_percent}"
         )
         if signal != 0:
             self.set_fault_text("")
@@ -1300,7 +1311,7 @@ def get_blue_mask(roi: np.ndarray) -> np.ndarray:
     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
     # Açık kalıp kontrolünde yalnızca belirgin mavi tonları algılansın;
     # düşük doygunluk/parlaklık değerleri karanlık bölgeleri yanlışlıkla mavi sayabiliyor.
-    lower_blue = np.array([95, 80, 50], dtype=np.uint8)
+    lower_blue = np.array([92, 65, 38], dtype=np.uint8)
     upper_blue = np.array([135, 255, 255], dtype=np.uint8)
     return cv2.inRange(hsv_roi, lower_blue, upper_blue)
 
