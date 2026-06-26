@@ -66,6 +66,8 @@ class AppState:
     urun_sayim_tepe_goruldu: bool = False
     threshold_fault_latched: bool = False
     threshold_fault_count: int | None = None
+    consecutive_low_yield_cycles: int = 0
+    low_yield_cycle_recorded: bool = False
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
@@ -254,6 +256,7 @@ class MainWindow(QWidget):
         self.current_status_message = "Hazır. ROI veya renk seçimi için aşağıdaki butonları kullanın."
         self.current_kalip_text = "Kalıp: Kapalı"
         self.current_signal_text = "Çıkış Sinyali: 0"
+        self.current_fault_text = ""
 
         self.expected_input = QLineEdit(str(self.state.expected_count))
         self.threshold_input = QLineEdit(str(self.state.threshold_percent))
@@ -413,7 +416,7 @@ class MainWindow(QWidget):
         settings_layout.addWidget(apply_btn, 0, 2, 6, 1)
         settings_group.setLayout(settings_layout)
 
-        metrics_group = QGroupBox("Canlı Sonuçlar")
+        metrics_group = QGroupBox("Sistem Bilgisi")
         metrics_group.setStyleSheet("QGroupBox { font-size: 15px; font-weight: bold; }")
         metrics_layout = QVBoxLayout()
         metrics_layout.setContentsMargins(6, 6, 6, 6)
@@ -555,6 +558,8 @@ class MainWindow(QWidget):
             "urun_sayim_tepe_goruldu",
             "threshold_fault_latched",
             "threshold_fault_count",
+            "consecutive_low_yield_cycles",
+            "low_yield_cycle_recorded",
         }
         for key, value in saved_settings.items():
             if key in runtime_only_fields or not hasattr(self.state, key):
@@ -577,6 +582,8 @@ class MainWindow(QWidget):
             "urun_sayim_tepe_goruldu",
             "threshold_fault_latched",
             "threshold_fault_count",
+            "consecutive_low_yield_cycles",
+            "low_yield_cycle_recorded",
         }
         settings = {
             key: value
@@ -606,6 +613,8 @@ class MainWindow(QWidget):
         self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.consecutive_low_yield_cycles = 0
+        self.state.low_yield_cycle_recorded = False
         self.state.kalip_acik_mavi_sure_baslangic = None
         self.save_settings()
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
@@ -622,6 +631,8 @@ class MainWindow(QWidget):
         self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.consecutive_low_yield_cycles = 0
+        self.state.low_yield_cycle_recorded = False
         self.state.kalip_acik_mavi_sure_baslangic = None
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
@@ -659,6 +670,10 @@ class MainWindow(QWidget):
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
         self.state.urun_sayim_tepe_goruldu = False
+        self.state.consecutive_low_yield_cycles = 0
+        self.state.low_yield_cycle_recorded = False
+        self.state.threshold_fault_latched = False
+        self.state.threshold_fault_count = None
         self.save_settings()
         self.update_status("✅ Parametreler güncellendi.")
 
@@ -809,7 +824,9 @@ class MainWindow(QWidget):
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
     def build_signal_info_text(self) -> str:
-        return f"{self.current_kalip_text} | {self.current_signal_text}"
+        if self.current_fault_text:
+            return f"{self.current_kalip_text} | {self.current_fault_text}"
+        return self.current_kalip_text
 
     def refresh_signal_info(self, color: str | None = None) -> None:
         style = "font-size: 14px; font-weight: 600;"
@@ -822,6 +839,10 @@ class MainWindow(QWidget):
         self.current_signal_text = text
         color = None if signal is None else ("#66df8f" if signal else "#ff6f6f")
         self.refresh_signal_info(color)
+
+    def set_fault_text(self, text: str = "") -> None:
+        self.current_fault_text = text
+        self.refresh_signal_info("#ff6f6f" if text else None)
 
     def update_status(self, message: str) -> None:
         self.current_status_message = message
@@ -902,8 +923,7 @@ class MainWindow(QWidget):
             self.state.urun_sayim_aktif = False
             self.state.urun_sayim_maksimum = 0
             self.state.urun_sayim_tepe_goruldu = False
-            self.state.threshold_fault_latched = False
-            self.state.threshold_fault_count = None
+            self.state.low_yield_cycle_recorded = False
             self.update_status("ℹ️ Kalıp kapalı. Algılama devam ediyor ancak sinyale müdahale edilmiyor.")
             self.set_signal_text("Çıkış Sinyali: 1", 1)
         else:
@@ -917,12 +937,19 @@ class MainWindow(QWidget):
                 else:
                     urun_sayisi_hazir = urun_tepe_hazir or self.state.urun_sayim_tepe_goruldu or not self.state.urun_sayim_aktif
                     if urun_sayisi_hazir and degerlendirilen_urun_sayisi >= minimum_required:
+                        self.state.consecutive_low_yield_cycles = 0
+                        self.state.low_yield_cycle_recorded = True
+                        self.state.threshold_fault_latched = False
+                        self.state.threshold_fault_count = None
                         self.state.waiting_products_to_clear = True
                     elif urun_sayisi_hazir and (urun_algilandi or self.state.previous_urun_detected):
-                        urun_fault = True
-                        if not self.state.threshold_fault_latched:
-                            self.state.threshold_fault_latched = True
+                        if not self.state.low_yield_cycle_recorded:
+                            self.state.consecutive_low_yield_cycles += 1
+                            self.state.low_yield_cycle_recorded = True
                             self.state.threshold_fault_count = degerlendirilen_urun_sayisi
+                        if self.state.consecutive_low_yield_cycles >= 3:
+                            urun_fault = True
+                            self.state.threshold_fault_latched = True
 
             if self.state.threshold_fault_latched:
                 urun_fault = True
@@ -942,13 +969,12 @@ class MainWindow(QWidget):
             if urun_roi_selected and urun_fault:
                 if self.state.threshold_fault_latched:
                     threshold_fault_count = self.state.threshold_fault_count if self.state.threshold_fault_count is not None else 0
-                    signal_zero_reason_parts.append(
-                        f"Ürün sayısı eşik değerin altında ürün sayısı {threshold_fault_count}"
-                    )
+                    eksik_urun = max(0, int(round(minimum_required)) - threshold_fault_count)
+                    signal_zero_reason_parts.append(f"Düşük Verim: {eksik_urun} adet ürün eksik")
                 elif self.state.waiting_products_to_clear:
-                    signal_zero_reason_parts.append("Kalıbın arasında ürün var")
+                    signal_zero_reason_parts.append("Kalmış Ürün")
                 else:
-                    signal_zero_reason_parts.append("ürün sayısı eşik değerin altında")
+                    signal_zero_reason_parts.append("Kalmış Ürün")
             signal_zero_reason = " ve ".join(signal_zero_reason_parts)
 
             fault_detected = not trigger_high
@@ -1010,6 +1036,13 @@ class MainWindow(QWidget):
                 self.update_status(
                     f"⏳ Hata algılandı. Müdahale süresi bekleniyor | Zaman aşımı: {timeout_elapsed:.1f}/{self.state.timeout_seconds} sn"
                 )
+            fault_text = ""
+            if signal == 0:
+                if yolluk_roi_selected and yolluk_var:
+                    fault_text = "Kalmış Yolluk"
+                elif signal_zero_reason:
+                    fault_text = signal_zero_reason
+            self.set_fault_text(fault_text)
             self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
             self.state.previous_yolluk_detected = yolluk_var
@@ -1020,6 +1053,8 @@ class MainWindow(QWidget):
         self.metric_count.setText(
             f"Anlık Ürün: {urun_sayisi} | Beklenen: {int(round(minimum_required))} | Min: {self.state.minimum_urun_count}"
         )
+        if signal != 0:
+            self.set_fault_text("")
         self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
