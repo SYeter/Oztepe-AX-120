@@ -1018,6 +1018,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                         urun_fault = True
                 else:
                     urun_sayisi_hazir = degerlendirilen_urun_sayisi >= minimum_required
+                    urun_kaldi_algilandi = urun_sayisi > self.state.minimum_urun_count
                     if urun_sayisi_hazir:
                         self.state.consecutive_low_yield_cycles = 0
                         self.state.low_yield_missing_counts = []
@@ -1025,6 +1026,10 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                         self.state.threshold_fault_latched = False
                         self.state.threshold_fault_count = None
                         self.state.waiting_products_to_clear = True
+                        urun_fault = urun_kaldi_algilandi
+                    elif not kalip_yeni_kapandi and urun_kaldi_algilandi:
+                        self.state.waiting_products_to_clear = True
+                        urun_fault = True
                     elif kalip_yeni_kapandi and degerlendirilen_urun_sayisi > self.state.minimum_urun_count:
                         if not self.state.low_yield_cycle_recorded:
                             self.state.consecutive_low_yield_cycles += 1
