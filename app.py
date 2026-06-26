@@ -452,14 +452,14 @@ class MainWindow(QWidget):
 
         guide_text = (
             "Öncelikle kalıbı içerisinde ürün varken, en açık pozisyona getiriniz\n"
-            "\"Açık Kalıp\" butonuna tıklayıp bir pabuç seçiniz.\n"
+            "\"Pabuç Seç\" butonuna tıklayıp bir pabuç seçiniz (Açık kalıp kontrolü)\n"
             "\"Ürün alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
             "\"Yolluk alanı\" bölümünde de yolluğun çıktığı alanı aynı şekilde seçiniz.\n"
             "\"Ürün seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler); "
-            "ürünün dışına taşmayacak, üründeki karanlıkta kalmış bölümleri almayacak şekilde seçiniz. "
-            "Ürün seçmedeki amaç ürünün rengini sisteme tanıtmak eğer mümkünse; ürünün kapsadığı alanı sisteme tanıtmaktır.\n\n"
-            "İyi çalışmalar\n"
-            "Plinsan Plastik A.Ş."
+            "ürünün dışına taşmayacak şekilde seçiniz. "
+            "Ürün seçmedeki amaç ürünün rengini sisteme tanıtmak, eğer mümkünse ürünün kapsadığı alanı sisteme tanıtmaktır. Ürün boyutu ne ne kadar doğru seçilirse ürün sayımı o kadar doğru olur.\n"
+            "Aşağıya düşmüş yollukları algılayıp makineyi durdurmaması için; yolluk büyüklüğü değerini artırınız. Fazla artırırsanız düşmemiş yollukları da algılamaz. İdeal ayar bir yolluğu kolona asılı kalmış vaziyette bırakıp o şekilde yapılabilir."
+            "\nÖzellikle beyaz tonlarındaki ürünlerde kalıp yüzeyini ürün olarak algılayıp kalıbı kapatmazsa, minimum ürün değerini algıladığı ürün sayısından bir fazla olarak ayarlayın"
         )
 
         layout = QVBoxLayout(guide_dialog)
