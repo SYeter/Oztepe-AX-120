@@ -48,6 +48,7 @@ class AppState:
     kalip_acik_bgr: tuple[float, float, float] | None = None
     kalip_acik_tolerance: float = 18.0
     kalip_acik_mavi_sure_baslangic: float | None = None
+    kalip_kapanma_kontrol_baslangic: float | None = None
     expected_count: int = 1
     threshold_percent: int = 50
     minimum_urun_count: int = 0
@@ -77,6 +78,7 @@ class AppState:
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
 YOLLUK_REARM_SECONDS = 2
+KALIP_KAPANMA_URUN_KONTROL_SECONDS = 1.0
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
 METRIC_OK_COLOR = "#66df8f"
 METRIC_FAIL_COLOR = "#ff6f6f"
@@ -565,6 +567,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
 
         runtime_only_fields = {
             "kalip_acik_mavi_sure_baslangic",
+            "kalip_kapanma_kontrol_baslangic",
             "output_latched_high",
             "fault_detected_since",
             "timeout_latched_high",
@@ -593,6 +596,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
     def save_settings(self) -> None:
         runtime_only_fields = {
             "kalip_acik_mavi_sure_baslangic",
+            "kalip_kapanma_kontrol_baslangic",
             "output_latched_high",
             "fault_detected_since",
             "timeout_latched_high",
@@ -646,6 +650,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.consecutive_low_yield_cycles = 0
         self.state.low_yield_cycle_recorded = False
         self.state.kalip_acik_mavi_sure_baslangic = None
+        self.state.kalip_kapanma_kontrol_baslangic = None
         self.save_settings()
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
@@ -666,6 +671,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.consecutive_low_yield_cycles = 0
         self.state.low_yield_cycle_recorded = False
         self.state.kalip_acik_mavi_sure_baslangic = None
+        self.state.kalip_kapanma_kontrol_baslangic = None
         self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
@@ -853,6 +859,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.kalip_acik_bgr = tuple(float(c) for c in mean_bgr)
         self.state.kalip_acik_tolerance = float(np.clip(np.mean(std_bgr) * 2.2 + 10.0, 10.0, 50.0))
         self.state.kalip_acik_mavi_sure_baslangic = None
+        self.state.kalip_kapanma_kontrol_baslangic = None
         self.save_settings()
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
@@ -1371,9 +1378,18 @@ def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
     if mavi_alan_orani >= 0.02:
         if state.kalip_acik_mavi_sure_baslangic is None:
             state.kalip_acik_mavi_sure_baslangic = now
+        state.kalip_kapanma_kontrol_baslangic = None
         return True
 
     state.kalip_acik_mavi_sure_baslangic = None
+    if state.kalip_kapanma_kontrol_baslangic is None:
+        state.kalip_kapanma_kontrol_baslangic = now
+        return True
+
+    if (now - state.kalip_kapanma_kontrol_baslangic) < KALIP_KAPANMA_URUN_KONTROL_SECONDS:
+        return True
+
+    state.kalip_kapanma_kontrol_baslangic = None
     return False
 
 
