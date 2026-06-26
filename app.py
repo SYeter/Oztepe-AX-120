@@ -65,6 +65,7 @@ class AppState:
     previous_kalip_acik: bool = False
     signal_zero_since: float | None = None
     waiting_products_to_clear: bool = False
+    urun_temizleme_baslangici_tamamlandi: bool = False
     urun_sayim_aktif: bool = False
     urun_sayim_maksimum: int = 0
     urun_sayim_tepe_goruldu: bool = False
@@ -579,6 +580,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             "previous_kalip_acik",
             "signal_zero_since",
             "waiting_products_to_clear",
+            "urun_temizleme_baslangici_tamamlandi",
             "urun_sayim_aktif",
             "urun_sayim_maksimum",
             "urun_sayim_tepe_goruldu",
@@ -594,6 +596,8 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             if key in runtime_only_fields or not hasattr(self.state, key):
                 continue
             setattr(self.state, key, value)
+        if self.state.urun_roi is not None:
+            self.state.urun_temizleme_baslangici_tamamlandi = True
 
     def save_settings(self) -> None:
         runtime_only_fields = {
@@ -609,6 +613,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             "previous_kalip_acik",
             "signal_zero_since",
             "waiting_products_to_clear",
+            "urun_temizleme_baslangici_tamamlandi",
             "urun_sayim_aktif",
             "urun_sayim_maksimum",
             "urun_sayim_tepe_goruldu",
@@ -644,6 +649,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
         self.state.waiting_products_to_clear = False
+        self.state.urun_temizleme_baslangici_tamamlandi = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
         self.state.urun_sayim_tepe_goruldu = False
@@ -666,6 +672,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.yolluk_clear_since = None
         self.state.previous_kalip_acik = False
         self.state.waiting_products_to_clear = False
+        self.state.urun_temizleme_baslangici_tamamlandi = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
         self.state.urun_sayim_tepe_goruldu = False
@@ -710,6 +717,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.intervention_input.setText(str(self.state.intervention_seconds))
         self.timeout_input.setText(str(self.state.timeout_seconds))
         self.state.waiting_products_to_clear = False
+        self.state.urun_temizleme_baslangici_tamamlandi = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
         self.state.urun_sayim_tepe_goruldu = False
@@ -772,6 +780,8 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             self.update_status(f"✅ Yolluk alanı tanımlandı: {roi}")
         elif self.selection_mode == "urun":
             self.state.urun_roi = roi
+            self.state.waiting_products_to_clear = False
+            self.state.urun_temizleme_baslangici_tamamlandi = False
             self.save_settings()
             self.update_status(f"✅ Ürün alanı tanımlandı: {roi}")
         elif self.selection_mode == "kalip_acik":
@@ -839,6 +849,8 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             return
 
         self.state.single_product_area = max(1, w * h)
+        self.state.waiting_products_to_clear = False
+        self.state.urun_temizleme_baslangici_tamamlandi = False
         self.save_settings()
         self.update_status(f"✅ Ürün seçimi tamamlandı: {roi}. Alan bazlı ürün adedi hesaplanacak.")
         self.selection_mode = None
@@ -969,6 +981,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             self.state.signal_zero_since = None
             self.state.yolluk_clear_since = None
             self.state.waiting_products_to_clear = False
+            self.state.urun_temizleme_baslangici_tamamlandi = False
             self.state.urun_sayim_aktif = False
             self.state.urun_sayim_maksimum = 0
             self.state.urun_sayim_tepe_goruldu = False
@@ -1002,6 +1015,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             self.state.signal_zero_since = None
             self.state.yolluk_clear_since = None
             self.state.waiting_products_to_clear = False
+            self.state.urun_temizleme_baslangici_tamamlandi = True
             self.state.urun_sayim_aktif = False
             self.state.urun_sayim_maksimum = 0
             self.state.urun_sayim_tepe_goruldu = False
@@ -1011,7 +1025,25 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         else:
             urun_fault = False
             if urun_roi_selected:
-                if self.state.waiting_products_to_clear:
+                # İlk kurulumda ürün alanı, kalıp açık ve ürünler görünürken seçilebilir.
+                # Bu öğretme anındaki ürünleri "kalmış ürün" kabul etmemek için önce
+                # alanın bir kez minimum ürün seviyesine kadar temizlenmesini bekleriz.
+                if not self.state.urun_temizleme_baslangici_tamamlandi:
+                    if urun_sayisi <= self.state.minimum_urun_count:
+                        self.state.urun_temizleme_baslangici_tamamlandi = True
+                    else:
+                        self.state.waiting_products_to_clear = False
+                        urun_sayisi_hazir = degerlendirilen_urun_sayisi >= minimum_required
+                        if urun_sayisi_hazir:
+                            self.state.consecutive_low_yield_cycles = 0
+                            self.state.low_yield_missing_counts = []
+                            self.state.low_yield_cycle_recorded = True
+                            self.state.threshold_fault_latched = False
+                            self.state.threshold_fault_count = None
+                        self.update_status(
+                            "ℹ️ Ürün alanı yeni seçildi. İlk ürünler temizlenene kadar kalmış ürün kilidi kurulmayacak."
+                        )
+                elif self.state.waiting_products_to_clear:
                     if urun_sayisi <= self.state.minimum_urun_count:
                         self.state.waiting_products_to_clear = False
                     else:
