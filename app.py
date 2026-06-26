@@ -652,7 +652,7 @@ class MainWindow(QWidget):
         lab_mean = selected_lab.mean(axis=0)
         lab_dist = np.linalg.norm(selected_lab - lab_mean, axis=1)
         self.state.selected_lab = (float(lab_mean[0]), float(lab_mean[1]), float(lab_mean[2]))
-        self.state.selected_lab_tolerance = float(np.clip(np.percentile(lab_dist, 92) + 8.0, 8.0, 48.0))
+        self.state.selected_lab_tolerance = float(np.clip(np.percentile(lab_dist, 95) + 18.0, 18.0, 85.0))
         sat_values = cv2.cvtColor(selected_area, cv2.COLOR_BGR2HSV).reshape(-1, 3)[:, 1]
         self.state.selected_is_low_sat = float(np.median(sat_values)) < 35.0
         self.state.selected_hsv_ranges = extract_hsv_ranges_from_roi(selected_area)
@@ -968,14 +968,14 @@ def build_mask_by_selected_color(
 
     if selected_is_low_sat:
         return lab_mask
-    return cv2.bitwise_and(mask, lab_mask)
+    return cv2.bitwise_or(mask, lab_mask)
 
 
 def extract_hsv_ranges_from_roi(
     roi_bgr: np.ndarray,
     sat_min: int = 20,
     val_min: int = 35,
-    hue_padding: int = 6,
+    hue_padding: int = 14,
 ) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
     hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
     pixels = hsv.reshape(-1, 3)
@@ -985,14 +985,13 @@ def extract_hsv_ranges_from_roi(
 
     hues = colorful[:, 0].astype(np.int32)
     hist = np.bincount(hues, minlength=180)
-    active_hues = np.where(hist >= max(3, int(hist.max() * 0.2)))[0]
+    active_hues = np.where(hist >= max(2, int(hist.max() * 0.08)))[0]
     if active_hues.size == 0:
         return []
 
-    sat_low = int(np.percentile(colorful[:, 1], 10))
-    sat_high = int(np.percentile(colorful[:, 1], 98))
-    val_low = int(np.percentile(colorful[:, 2], 10))
-    val_high = int(np.percentile(colorful[:, 2], 98))
+    sat_low = int(np.percentile(colorful[:, 1], 5))
+    sat_high = int(np.percentile(colorful[:, 1], 99))
+    val_low = int(np.percentile(colorful[:, 2], 3))
 
     ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] = []
     sorted_hues = np.sort(active_hues)
@@ -1003,15 +1002,15 @@ def extract_hsv_ranges_from_roi(
         h = int(hue)
         if h != prev + 1:
             ranges.append((
-                (max(segment_start - hue_padding, 0), max(sat_low - 25, 0), max(val_low - 25, 0)),
-                (min(prev + hue_padding, 179), min(sat_high + 20, 255), min(val_high + 20, 255)),
+                (max(segment_start - hue_padding, 0), max(sat_low - 70, 0), max(val_low - 90, 0)),
+                (min(prev + hue_padding, 179), min(sat_high + 45, 255), 255),
             ))
             segment_start = h
         prev = h
 
     ranges.append((
-        (max(segment_start - hue_padding, 0), max(sat_low - 25, 0), max(val_low - 25, 0)),
-        (min(prev + hue_padding, 179), min(sat_high + 20, 255), min(val_high + 20, 255)),
+        (max(segment_start - hue_padding, 0), max(sat_low - 70, 0), max(val_low - 90, 0)),
+        (min(prev + hue_padding, 179), min(sat_high + 45, 255), 255),
     ))
 
     return ranges
@@ -1122,7 +1121,7 @@ def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
     else:
         mavi_alan_orani = 0.0
 
-    if mavi_alan_orani >= 0.10:
+    if mavi_alan_orani >= 0.05:
         if state.kalip_acik_mavi_sure_baslangic is None:
             state.kalip_acik_mavi_sure_baslangic = now
         gereken_sure = max(0, state.intervention_seconds)
@@ -1136,8 +1135,8 @@ def get_blue_mask(roi: np.ndarray) -> np.ndarray:
     if roi.size == 0:
         return np.zeros((0, 0), dtype=np.uint8)
     hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    lower_blue = np.array([90, 60, 40], dtype=np.uint8)
-    upper_blue = np.array([140, 255, 255], dtype=np.uint8)
+    lower_blue = np.array([85, 35, 30], dtype=np.uint8)
+    upper_blue = np.array([145, 255, 255], dtype=np.uint8)
     return cv2.inRange(hsv_roi, lower_blue, upper_blue)
 
 
