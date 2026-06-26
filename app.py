@@ -279,7 +279,7 @@ class MainWindow(QWidget):
             QWidget {
                 background-color: #0f141d;
                 color: #e9eef8;
-                font-size: 12px;
+                font-size: 14px;
             }
             QGroupBox {
                 border: 1px solid #2d3a4f;
@@ -294,13 +294,15 @@ class MainWindow(QWidget):
                 padding: 0 6px;
                 color: #9fb3d8;
                 font-weight: bold;
+                font-size: 18px;
             }
             QPushButton {
                 background-color: #28364c;
                 border: 1px solid #3d5374;
                 border-radius: 10px;
-                padding: 8px;
+                padding: 10px;
                 font-weight: bold;
+                font-size: 16px;
             }
             QPushButton:hover { background-color: #324666; }
             QPushButton:pressed { background-color: #223149; }
@@ -361,7 +363,7 @@ class MainWindow(QWidget):
         settings_layout.setColumnStretch(2, 1)
         settings_layout.setColumnMinimumWidth(0, 230)
 
-        settings_label_style = "font-size: 13px; font-weight: 600;"
+        settings_label_style = "font-size: 15px; font-weight: 600;"
 
         expected_label = QLabel("Beklenen Ürün Adedi")
         expected_label.setStyleSheet(settings_label_style)
@@ -400,7 +402,7 @@ class MainWindow(QWidget):
         metrics_group.setStyleSheet("QGroupBox { font-size: 17px; }")
         metrics_layout = QVBoxLayout()
         for metric in [self.metric_count, self.metric_signal]:
-            metric.setStyleSheet("font-size: 16px; font-weight: 600;")
+            metric.setStyleSheet("font-size: 18px; font-weight: 600;")
             card = QFrame()
             card.setStyleSheet(
                 "QFrame {"
@@ -425,7 +427,7 @@ class MainWindow(QWidget):
         left_panel_layout.addWidget(self.status_label)
         left_panel_layout.addStretch(1)
 
-        left_panel.setFixedWidth(500)
+        left_panel.setFixedWidth(560)
 
         guide_btn = QPushButton("Program Kullanım Kılavuzu")
         guide_btn.setStyleSheet("font-size: 16px; padding: 10px 14px;")
@@ -650,9 +652,11 @@ class MainWindow(QWidget):
         self.state.selected_bgr = tuple(int(c) for c in mean_bgr)
         selected_lab = cv2.cvtColor(selected_area, cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
         lab_mean = selected_lab.mean(axis=0)
-        lab_dist = np.linalg.norm(selected_lab - lab_mean, axis=1)
         self.state.selected_lab = (float(lab_mean[0]), float(lab_mean[1]), float(lab_mean[2]))
-        self.state.selected_lab_tolerance = float(np.clip(np.percentile(lab_dist, 95) + 18.0, 18.0, 85.0))
+        ab_values = selected_lab[:, 1:3]
+        ab_mean = lab_mean[1:3]
+        ab_dist = np.linalg.norm(ab_values - ab_mean, axis=1)
+        self.state.selected_lab_tolerance = float(np.clip(np.percentile(ab_dist, 95) + 10.0, 12.0, 38.0))
         sat_values = cv2.cvtColor(selected_area, cv2.COLOR_BGR2HSV).reshape(-1, 3)[:, 1]
         self.state.selected_is_low_sat = float(np.median(sat_values)) < 35.0
         self.state.selected_hsv_ranges = extract_hsv_ranges_from_roi(selected_area)
@@ -928,8 +932,11 @@ def draw_roi(frame: np.ndarray, roi: tuple[int, int, int, int], color: tuple[int
     safe_label = label.translate(tr_to_ascii)
     font_scale = max(2.2, frame.shape[1] / 720)
     thickness = max(4, int(font_scale * 2))
-    text_x = x
-    text_y = max(40, y - 14)
+    (text_width, text_height), baseline = cv2.getTextSize(safe_label, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness)
+    text_x = max(0, min(x, frame.shape[1] - text_width - 6))
+    text_y = max(text_height + 6, y - 14)
+    if text_y > frame.shape[0] - baseline - 6:
+        text_y = frame.shape[0] - baseline - 6
     cv2.putText(
         frame,
         safe_label,
@@ -963,19 +970,19 @@ def build_mask_by_selected_color(
 
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB).astype(np.float32)
     lab_ref = np.array(selected_lab, dtype=np.float32).reshape((1, 1, 3))
-    lab_dist = np.linalg.norm(lab - lab_ref, axis=2)
-    lab_mask = np.where(lab_dist <= selected_lab_tolerance, 255, 0).astype(np.uint8)
+    ab_dist = np.linalg.norm(lab[:, :, 1:3] - lab_ref[:, :, 1:3], axis=2)
+    lab_mask = np.where(ab_dist <= selected_lab_tolerance, 255, 0).astype(np.uint8)
 
     if selected_is_low_sat:
         return lab_mask
-    return cv2.bitwise_or(mask, lab_mask)
+    return cv2.bitwise_and(mask, lab_mask)
 
 
 def extract_hsv_ranges_from_roi(
     roi_bgr: np.ndarray,
-    sat_min: int = 20,
-    val_min: int = 35,
-    hue_padding: int = 14,
+    sat_min: int = 35,
+    val_min: int = 30,
+    hue_padding: int = 8,
 ) -> list[tuple[tuple[int, int, int], tuple[int, int, int]]]:
     hsv = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2HSV)
     pixels = hsv.reshape(-1, 3)
@@ -985,13 +992,13 @@ def extract_hsv_ranges_from_roi(
 
     hues = colorful[:, 0].astype(np.int32)
     hist = np.bincount(hues, minlength=180)
-    active_hues = np.where(hist >= max(2, int(hist.max() * 0.08)))[0]
+    active_hues = np.where(hist >= max(2, int(hist.max() * 0.12)))[0]
     if active_hues.size == 0:
         return []
 
-    sat_low = int(np.percentile(colorful[:, 1], 5))
-    sat_high = int(np.percentile(colorful[:, 1], 99))
-    val_low = int(np.percentile(colorful[:, 2], 3))
+    sat_low = int(np.percentile(colorful[:, 1], 10))
+    sat_high = int(np.percentile(colorful[:, 1], 98))
+    val_low = int(np.percentile(colorful[:, 2], 2))
 
     ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] = []
     sorted_hues = np.sort(active_hues)
@@ -1002,15 +1009,15 @@ def extract_hsv_ranges_from_roi(
         h = int(hue)
         if h != prev + 1:
             ranges.append((
-                (max(segment_start - hue_padding, 0), max(sat_low - 70, 0), max(val_low - 90, 0)),
-                (min(prev + hue_padding, 179), min(sat_high + 45, 255), 255),
+                (max(segment_start - hue_padding, 0), max(sat_low - 30, 0), max(val_low - 35, 0)),
+                (min(prev + hue_padding, 179), min(sat_high + 30, 255), 255),
             ))
             segment_start = h
         prev = h
 
     ranges.append((
-        (max(segment_start - hue_padding, 0), max(sat_low - 70, 0), max(val_low - 90, 0)),
-        (min(prev + hue_padding, 179), min(sat_high + 45, 255), 255),
+        (max(segment_start - hue_padding, 0), max(sat_low - 30, 0), max(val_low - 35, 0)),
+        (min(prev + hue_padding, 179), min(sat_high + 30, 255), 255),
     ))
 
     return ranges
