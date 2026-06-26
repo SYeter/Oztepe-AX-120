@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
@@ -63,10 +65,14 @@ class AppState:
     urun_sayim_tepe_goruldu: bool = False
     threshold_fault_latched: bool = False
     threshold_fault_count: int | None = None
+    yolluk_missing_since: float | None = None
+    urun_missing_since: float | None = None
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
 YOLLUK_REARM_SECONDS = 2
+SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
+PULSE_STEP_SECONDS = 0.5
 
 
 class NoBufferVideoCapture:
@@ -237,6 +243,8 @@ class MainWindow(QWidget):
         self.setWindowFlag(Qt.FramelessWindowHint, True)
 
         self.state = AppState()
+        self.load_settings()
+        self.signal_pulse_started_at: float | None = None
         self.selection_mode: str | None = None
         self.current_frame: np.ndarray | None = None
 
@@ -250,9 +258,9 @@ class MainWindow(QWidget):
         self.status_label.setObjectName("status")
         self.status_label.setWordWrap(True)
 
-        self.expected_input = QLineEdit("1")
-        self.threshold_input = QLineEdit("50")
-        self.minimum_urun_input = QLineEdit("0")
+        self.expected_input = QLineEdit(str(self.state.expected_count))
+        self.threshold_input = QLineEdit(str(self.state.threshold_percent))
+        self.minimum_urun_input = QLineEdit(str(self.state.minimum_urun_count))
         self.yolluk_ratio_input = QLineEdit(str(self.state.yolluk_min_size_ratio))
         self.intervention_input = QLineEdit(str(self.state.intervention_seconds))
         self.timeout_input = QLineEdit(str(self.state.timeout_seconds))
@@ -301,9 +309,10 @@ class MainWindow(QWidget):
                 background-color: #28364c;
                 border: 1px solid #3d5374;
                 border-radius: 10px;
-                padding: 10px;
+                padding: 14px 18px;
                 font-weight: bold;
-                font-size: 16px;
+                font-size: 20px;
+                min-height: 44px;
             }
             QPushButton:hover { background-color: #324666; }
             QPushButton:pressed { background-color: #223149; }
@@ -332,7 +341,7 @@ class MainWindow(QWidget):
         yolluk_btn = QPushButton("Yolluk Alanı Seç")
         urun_btn = QPushButton("Ürün Alanı Seç")
         color_btn = QPushButton("Ürün Seç")
-        kalip_acik_btn = QPushButton("Pbuç Seç")
+        kalip_acik_btn = QPushButton("Pabuc Seç")
 
         yolluk_btn.clicked.connect(lambda: self.activate_mode("yolluk"))
         urun_btn.clicked.connect(lambda: self.activate_mode("urun"))
@@ -378,7 +387,7 @@ class MainWindow(QWidget):
         minimum_urun_label.setStyleSheet(settings_label_style)
         settings_layout.addWidget(minimum_urun_label, 2, 0)
         settings_layout.addLayout(self.build_numeric_row(self.minimum_urun_input, 1.0), 2, 1)
-        yolluk_ratio_label = QLabel("Yolluk Büyüklüğü (x Ürün)")
+        yolluk_ratio_label = QLabel("Yolluk Büyüklüğü")
         yolluk_ratio_label.setStyleSheet(settings_label_style)
         yolluk_ratio_label.setWordWrap(False)
         settings_layout.addWidget(yolluk_ratio_label, 3, 0)
@@ -393,7 +402,7 @@ class MainWindow(QWidget):
         settings_layout.addLayout(self.build_numeric_row(self.timeout_input, 1.0), 5, 1)
 
         apply_btn = QPushButton("Uygula")
-        apply_btn.setStyleSheet("font-size: 16px; padding: 10px 14px;")
+        apply_btn.setStyleSheet("font-size: 20px; font-weight: bold; padding: 14px 18px;")
         apply_btn.setMinimumWidth(96)
         apply_btn.clicked.connect(self.apply_inputs)
         settings_layout.addWidget(apply_btn, 0, 2, 6, 1)
@@ -430,8 +439,8 @@ class MainWindow(QWidget):
 
         left_panel.setFixedWidth(560)
 
-        guide_btn = QPushButton("Program Kullanım Kılavuzu")
-        guide_btn.setStyleSheet("font-size: 16px; padding: 10px 14px;")
+        guide_btn = QPushButton("Nasıl Kullanılır")
+        guide_btn.setStyleSheet("font-size: 20px; font-weight: bold; padding: 14px 18px;")
         guide_btn.clicked.connect(self.show_user_guide)
 
         camera_panel = QWidget()
@@ -467,7 +476,7 @@ class MainWindow(QWidget):
         layout = QVBoxLayout(guide_dialog)
         guide_label = QLabel(guide_text)
         guide_label.setWordWrap(True)
-        guide_label.setStyleSheet("font-size: 16px;")
+        guide_label.setStyleSheet("font-size: 24px; font-weight: bold; line-height: 130%;")
         layout.addWidget(guide_label)
 
         close_button = QPushButton("Kapat")
@@ -491,6 +500,86 @@ class MainWindow(QWidget):
     def handle_screen_geometry_change(self, _geometry) -> None:
         if self.isVisible():
             self.showFullScreen()
+
+    def load_settings(self) -> None:
+        if not SETTINGS_PATH.exists():
+            return
+        try:
+            saved_settings = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+
+        runtime_only_fields = {
+            "kalip_acik_mavi_sure_baslangic",
+            "output_latched_high",
+            "fault_detected_since",
+            "timeout_latched_high",
+            "yolluk_clear_since",
+            "previous_yolluk_detected",
+            "previous_urun_detected",
+            "signal_zero_since",
+            "waiting_products_to_clear",
+            "urun_sayim_aktif",
+            "urun_sayim_maksimum",
+            "urun_sayim_tepe_goruldu",
+            "threshold_fault_latched",
+            "threshold_fault_count",
+            "yolluk_missing_since",
+            "urun_missing_since",
+        }
+        for key, value in saved_settings.items():
+            if key in runtime_only_fields or not hasattr(self.state, key):
+                continue
+            setattr(self.state, key, value)
+
+    def save_settings(self) -> None:
+        runtime_only_fields = {
+            "kalip_acik_mavi_sure_baslangic",
+            "output_latched_high",
+            "fault_detected_since",
+            "timeout_latched_high",
+            "yolluk_clear_since",
+            "previous_yolluk_detected",
+            "previous_urun_detected",
+            "signal_zero_since",
+            "waiting_products_to_clear",
+            "urun_sayim_aktif",
+            "urun_sayim_maksimum",
+            "urun_sayim_tepe_goruldu",
+            "threshold_fault_latched",
+            "threshold_fault_count",
+            "yolluk_missing_since",
+            "urun_missing_since",
+        }
+        settings = {
+            key: value
+            for key, value in asdict(self.state).items()
+            if key not in runtime_only_fields
+        }
+        SETTINGS_PATH.write_text(
+            json.dumps(settings, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def start_signal_pulse(self, message: str | None = None) -> None:
+        self.signal_pulse_started_at = time.monotonic()
+        self.state.output_latched_high = True
+        if message:
+            self.update_status(message)
+
+    def apply_signal_pulse(self, signal: int, now: float) -> int:
+        if self.signal_pulse_started_at is None:
+            return signal
+
+        elapsed = now - self.signal_pulse_started_at
+        if elapsed < PULSE_STEP_SECONDS:
+            return 1
+        if elapsed < PULSE_STEP_SECONDS * 2:
+            return 0
+
+        self.signal_pulse_started_at = None
+        self.state.output_latched_high = True
+        return 1
     
     def clear_selected_areas(self) -> None:
         self.state.yolluk_roi = None
@@ -511,6 +600,7 @@ class MainWindow(QWidget):
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
         self.state.kalip_acik_mavi_sure_baslangic = None
+        self.save_settings()
         self.update_status("✅ Seçili alanlar silindi. Sinyal 1'e zorlandı.")
 
     def reset_signal_high(self) -> None:
@@ -526,7 +616,7 @@ class MainWindow(QWidget):
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
         self.state.kalip_acik_mavi_sure_baslangic = None
-        self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
+        self.start_signal_pulse("✅ Reset uygulandı. Sinyal 1-0-1 sırasıyla gönderiliyor.")
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -562,20 +652,21 @@ class MainWindow(QWidget):
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
         self.state.urun_sayim_tepe_goruldu = False
+        self.save_settings()
         self.update_status("✅ Parametreler güncellendi.")
 
     def build_numeric_row(self, input_field: QLineEdit, step: float) -> QHBoxLayout:
         row = QHBoxLayout()
         minus_btn = QPushButton("-")
         plus_btn = QPushButton("+")
-        minus_btn.setFixedWidth(44)
-        plus_btn.setFixedWidth(44)
+        minus_btn.setFixedWidth(56)
+        plus_btn.setFixedWidth(56)
         minus_btn.setAutoRepeat(True)
         plus_btn.setAutoRepeat(True)
         minus_btn.setAutoRepeatDelay(350)
         plus_btn.setAutoRepeatDelay(350)
-        minus_btn.setAutoRepeatInterval(70)
-        plus_btn.setAutoRepeatInterval(70)
+        minus_btn.setAutoRepeatInterval(23)
+        plus_btn.setAutoRepeatInterval(23)
         minus_btn.clicked.connect(lambda _=False, field=input_field, s=step: self.nudge_numeric_field(field, -s))
         plus_btn.clicked.connect(lambda _=False, field=input_field, s=step: self.nudge_numeric_field(field, s))
         row.addWidget(input_field)
@@ -609,9 +700,11 @@ class MainWindow(QWidget):
     def assign_roi(self, roi: tuple[int, int, int, int]) -> None:
         if self.selection_mode == "yolluk":
             self.state.yolluk_roi = roi
+            self.save_settings()
             self.update_status(f"✅ Yolluk alanı tanımlandı: {roi}")
         elif self.selection_mode == "urun":
             self.state.urun_roi = roi
+            self.save_settings()
             self.update_status(f"✅ Ürün alanı tanımlandı: {roi}")
         elif self.selection_mode == "kalip_acik":
             self.pick_kalip_acik_from_roi(roi)
@@ -678,6 +771,7 @@ class MainWindow(QWidget):
             return
 
         self.state.single_product_area = max(1, w * h)
+        self.save_settings()
         self.update_status(f"✅ Ürün seçimi tamamlandı: {roi}. Alan bazlı ürün adedi hesaplanacak.")
         self.selection_mode = None
 
@@ -702,6 +796,7 @@ class MainWindow(QWidget):
         self.state.kalip_acik_bgr = tuple(float(c) for c in mean_bgr)
         self.state.kalip_acik_tolerance = float(np.clip(np.mean(std_bgr) * 2.2 + 10.0, 10.0, 50.0))
         self.state.kalip_acik_mavi_sure_baslangic = None
+        self.save_settings()
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
     def update_status(self, message: str) -> None:
@@ -732,6 +827,30 @@ class MainWindow(QWidget):
         urun_algilandi = urun_sayisi > 0
         degerlendirilen_urun_sayisi = urun_sayisi
         urun_tepe_hazir = False
+
+        if yolluk_roi_selected and kalip_acik:
+            if yolluk_var:
+                self.state.yolluk_missing_since = None
+            elif self.state.previous_yolluk_detected:
+                self.state.yolluk_missing_since = now
+            elif self.state.yolluk_missing_since is not None:
+                if (now - self.state.yolluk_missing_since) >= self.state.intervention_seconds:
+                    self.start_signal_pulse("✅ Yolluk düştü. Sinyal 1-0-1 sırasıyla gönderiliyor.")
+                    self.state.yolluk_missing_since = None
+        else:
+            self.state.yolluk_missing_since = None
+
+        if urun_roi_selected and kalip_acik:
+            if urun_algilandi:
+                self.state.urun_missing_since = None
+            elif self.state.previous_urun_detected:
+                self.state.urun_missing_since = now
+            elif self.state.urun_missing_since is not None:
+                if (now - self.state.urun_missing_since) >= self.state.intervention_seconds:
+                    self.start_signal_pulse("✅ Ürün düştü. Sinyal 1-0-1 sırasıyla gönderiliyor.")
+                    self.state.urun_missing_since = None
+        else:
+            self.state.urun_missing_since = None
 
         if urun_roi_selected:
             if urun_algilandi:
@@ -900,10 +1019,11 @@ class MainWindow(QWidget):
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
 
+        signal = self.apply_signal_pulse(signal, now)
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(
-            f"Anlık Ürün: {urun_sayisi} | Beklenen: {minimum_required:g} | Min: {self.state.minimum_urun_count}"
+            f"Anlık Ürün: {urun_sayisi} | Beklenen: {int(round(minimum_required))} | Min: {self.state.minimum_urun_count}"
         )
         if not rois_selected:
             self.metric_signal.setText(f"Çıkış Sinyali: {signal}")
@@ -918,6 +1038,7 @@ class MainWindow(QWidget):
         )
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
+        self.save_settings()
         self.cap.release()
         event.accept()
 
@@ -1139,8 +1260,7 @@ def is_kalip_open(frame: np.ndarray, state: AppState, now: float) -> bool:
     if mavi_alan_orani >= 0.02:
         if state.kalip_acik_mavi_sure_baslangic is None:
             state.kalip_acik_mavi_sure_baslangic = now
-        gereken_sure = max(0, state.intervention_seconds)
-        return (now - state.kalip_acik_mavi_sure_baslangic) >= gereken_sure
+        return True
 
     state.kalip_acik_mavi_sure_baslangic = None
     return False
