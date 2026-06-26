@@ -66,14 +66,11 @@ class AppState:
     urun_sayim_tepe_goruldu: bool = False
     threshold_fault_latched: bool = False
     threshold_fault_count: int | None = None
-    yolluk_missing_since: float | None = None
-    urun_missing_since: float | None = None
 
 
 SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmeli, sistem devre dışı"
 YOLLUK_REARM_SECONDS = 2
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
-PULSE_STEP_SECONDS = 0.5
 
 
 class NoBufferVideoCapture:
@@ -245,7 +242,6 @@ class MainWindow(QWidget):
 
         self.state = AppState()
         self.load_settings()
-        self.signal_pulse_started_at: float | None = None
         self.selection_mode: str | None = None
         self.current_frame: np.ndarray | None = None
 
@@ -256,6 +252,7 @@ class MainWindow(QWidget):
         self.video_label = VideoLabel(self)
 
         self.current_status_message = "Hazır. ROI veya renk seçimi için aşağıdaki butonları kullanın."
+        self.current_kalip_text = "Kalıp: Kapalı"
         self.current_signal_text = "Çıkış Sinyali: 0"
 
         self.expected_input = QLineEdit(str(self.state.expected_count))
@@ -547,8 +544,6 @@ class MainWindow(QWidget):
             "urun_sayim_tepe_goruldu",
             "threshold_fault_latched",
             "threshold_fault_count",
-            "yolluk_missing_since",
-            "urun_missing_since",
         }
         for key, value in saved_settings.items():
             if key in runtime_only_fields or not hasattr(self.state, key):
@@ -571,8 +566,6 @@ class MainWindow(QWidget):
             "urun_sayim_tepe_goruldu",
             "threshold_fault_latched",
             "threshold_fault_count",
-            "yolluk_missing_since",
-            "urun_missing_since",
         }
         settings = {
             key: value
@@ -584,26 +577,6 @@ class MainWindow(QWidget):
             encoding="utf-8",
         )
 
-    def start_signal_pulse(self, message: str | None = None) -> None:
-        self.signal_pulse_started_at = time.monotonic()
-        self.state.output_latched_high = True
-        if message:
-            self.update_status(message)
-
-    def apply_signal_pulse(self, signal: int, now: float) -> int:
-        if self.signal_pulse_started_at is None:
-            return signal
-
-        elapsed = now - self.signal_pulse_started_at
-        if elapsed < PULSE_STEP_SECONDS:
-            return 1
-        if elapsed < PULSE_STEP_SECONDS * 2:
-            return 0
-
-        self.signal_pulse_started_at = None
-        self.state.output_latched_high = True
-        return 1
-    
     def clear_selected_areas(self) -> None:
         self.state.yolluk_roi = None
         self.state.urun_roi = None
@@ -639,7 +612,7 @@ class MainWindow(QWidget):
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
         self.state.kalip_acik_mavi_sure_baslangic = None
-        self.start_signal_pulse("✅ Reset uygulandı. Sinyal 1-0-1 sırasıyla gönderiliyor.")
+        self.update_status("✅ Reset uygulandı. Sinyal 1'e zorlandı.")
 
     def start_timer(self) -> None:
         self.timer = QTimer(self)
@@ -825,9 +798,7 @@ class MainWindow(QWidget):
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
     def build_signal_info_text(self) -> str:
-        if self.current_status_message:
-            return f"{self.current_signal_text} | Bilgi: {self.current_status_message}"
-        return self.current_signal_text
+        return f"{self.current_kalip_text} | {self.current_signal_text}"
 
     def refresh_signal_info(self, color: str | None = None) -> None:
         style = "font-size: 14px; font-weight: 600;"
@@ -860,6 +831,7 @@ class MainWindow(QWidget):
         urun_sayisi, yolluk_var, debug_frame = count_products_and_yolluk(frame, self.state)
         now = time.monotonic()
         kalip_acik = is_kalip_open(frame, self.state, now)
+        self.current_kalip_text = f"Kalıp: {'Açık' if kalip_acik else 'Kapalı'}"
 
         yolluk_roi_selected = self.state.yolluk_roi is not None
         urun_roi_selected = self.state.urun_roi is not None
@@ -870,30 +842,6 @@ class MainWindow(QWidget):
         urun_algilandi = urun_sayisi > 0
         degerlendirilen_urun_sayisi = urun_sayisi
         urun_tepe_hazir = False
-
-        if yolluk_roi_selected and kalip_acik:
-            if yolluk_var:
-                self.state.yolluk_missing_since = None
-            elif self.state.previous_yolluk_detected:
-                self.state.yolluk_missing_since = now
-            elif self.state.yolluk_missing_since is not None:
-                if (now - self.state.yolluk_missing_since) >= self.state.intervention_seconds:
-                    self.start_signal_pulse("✅ Yolluk düştü. Sinyal 1-0-1 sırasıyla gönderiliyor.")
-                    self.state.yolluk_missing_since = None
-        else:
-            self.state.yolluk_missing_since = None
-
-        if urun_roi_selected and kalip_acik:
-            if urun_algilandi:
-                self.state.urun_missing_since = None
-            elif self.state.previous_urun_detected:
-                self.state.urun_missing_since = now
-            elif self.state.urun_missing_since is not None:
-                if (now - self.state.urun_missing_since) >= self.state.intervention_seconds:
-                    self.start_signal_pulse("✅ Ürün düştü. Sinyal 1-0-1 sırasıyla gönderiliyor.")
-                    self.state.urun_missing_since = None
-        else:
-            self.state.urun_missing_since = None
 
         if urun_roi_selected:
             if urun_algilandi:
@@ -946,7 +894,7 @@ class MainWindow(QWidget):
             self.state.threshold_fault_latched = False
             self.state.threshold_fault_count = None
             self.update_status("ℹ️ Kalıp kapalı. Algılama devam ediyor ancak sinyale müdahale edilmiyor.")
-            self.set_signal_text("Çıkış Sinyali: 1 | Kalıp kapalı", 1)
+            self.set_signal_text("Çıkış Sinyali: 1", 1)
         else:
             urun_fault = False
             if urun_roi_selected:
@@ -1046,32 +994,22 @@ class MainWindow(QWidget):
             else:
                 self.state.signal_zero_since = None
 
-            signal_text = f"Çıkış Sinyali: {signal}"
-            if signal == 0:
-                if signal_zero_reason:
-                    signal_text += f" | {signal_zero_reason}"
-                if self.state.signal_zero_since is not None:
-                    timeout_elapsed = now - self.state.signal_zero_since
-                    self.update_status(
-                        f"⏳ Hata algılandı. Müdahale süresi bekleniyor | Zaman aşımı: {timeout_elapsed:.1f}/{self.state.timeout_seconds} sn"
-                    )
-            elif self.state.timeout_latched_high:
-                signal_text += " | Zaman aşımı sonrası 1'e kilitli"
-            self.set_signal_text(signal_text, signal)
+            if signal == 0 and self.state.signal_zero_since is not None:
+                timeout_elapsed = now - self.state.signal_zero_since
+                self.update_status(
+                    f"⏳ Hata algılandı. Müdahale süresi bekleniyor | Zaman aşımı: {timeout_elapsed:.1f}/{self.state.timeout_seconds} sn"
+                )
+            self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
 
-        signal = self.apply_signal_pulse(signal, now)
         STM32Serial.STM32Serial(chr(signal))
 
         self.metric_count.setText(
             f"Anlık Ürün: {urun_sayisi} | Beklenen: {int(round(minimum_required))} | Min: {self.state.minimum_urun_count}"
         )
-        if not rois_selected:
-            self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
-        else:
-            self.refresh_signal_info("#66df8f" if signal else "#ff6f6f")
+        self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
