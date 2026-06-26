@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import sys
 import threading
@@ -284,7 +285,8 @@ class MainWindow(QWidget):
             input_field.setStyleSheet("font-size: 14px; font-weight: 600;")
 
         self.metric_count = QLabel()
-        self.metric_signal = MarqueeLabel(self.build_signal_info_text())
+        self.metric_signal = QLabel(self.build_signal_info_text())
+        self.metric_signal.setTextFormat(Qt.RichText)
         
         self.init_ui()
         self.setup_fullscreen_behavior()
@@ -847,25 +849,28 @@ class MainWindow(QWidget):
         self.update_status(f"✅ Açık kalıp referansı alındı: {(x, y, w, h)}")
 
     def build_signal_info_text(self) -> str:
+        kalip_text = html.escape(self.current_kalip_text)
+        kalip_part = f"<span style='color: {METRIC_OK_COLOR};'>{kalip_text}</span>"
         if self.current_fault_text:
-            return f"{self.current_kalip_text} | {self.current_fault_text}"
-        return self.current_kalip_text
+            fault_text = html.escape(self.current_fault_text)
+            return (
+                f"{kalip_part} "
+                "<span style='color: #ffffff;'>|</span> "
+                f"<span style='color: {METRIC_FAIL_COLOR};'>{fault_text}</span>"
+            )
+        return kalip_part
 
     def refresh_signal_info(self, color: str | None = None) -> None:
-        style = "font-size: 14px; font-weight: 600;"
-        if color:
-            style += f" color: {color};"
-        self.metric_signal.setStyleSheet(style)
+        self.metric_signal.setStyleSheet("font-size: 14px; font-weight: 600;")
         self.metric_signal.setText(self.build_signal_info_text())
 
     def set_signal_text(self, text: str, signal: int | None = None) -> None:
         self.current_signal_text = text
-        color = None if signal is None else (METRIC_OK_COLOR if signal else METRIC_FAIL_COLOR)
-        self.refresh_signal_info(color)
+        self.refresh_signal_info()
 
     def set_fault_text(self, text: str = "") -> None:
         self.current_fault_text = text
-        self.refresh_signal_info(METRIC_FAIL_COLOR if text else None)
+        self.refresh_signal_info()
 
     def update_status(self, message: str) -> None:
         self.current_status_message = message
