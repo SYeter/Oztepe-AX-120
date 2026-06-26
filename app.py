@@ -60,6 +60,7 @@ class AppState:
     yolluk_clear_since: float | None = None
     previous_yolluk_detected: bool = False
     previous_urun_detected: bool = False
+    previous_kalip_acik: bool = False
     signal_zero_since: float | None = None
     waiting_products_to_clear: bool = False
     urun_sayim_aktif: bool = False
@@ -569,6 +570,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             "yolluk_clear_since",
             "previous_yolluk_detected",
             "previous_urun_detected",
+            "previous_kalip_acik",
             "signal_zero_since",
             "waiting_products_to_clear",
             "urun_sayim_aktif",
@@ -596,6 +598,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             "yolluk_clear_since",
             "previous_yolluk_detected",
             "previous_urun_detected",
+            "previous_kalip_acik",
             "signal_zero_since",
             "waiting_products_to_clear",
             "urun_sayim_aktif",
@@ -628,6 +631,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.timeout_latched_high = False
         self.state.previous_yolluk_detected = False
         self.state.previous_urun_detected = False
+        self.state.previous_kalip_acik = False
         self.state.fault_detected_since = None
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
@@ -650,6 +654,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.fault_detected_since = None
         self.state.signal_zero_since = None
         self.state.yolluk_clear_since = None
+        self.state.previous_kalip_acik = False
         self.state.waiting_products_to_clear = False
         self.state.urun_sayim_aktif = False
         self.state.urun_sayim_maksimum = 0
@@ -914,24 +919,29 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         minimum_required = self.state.expected_count * (self.state.threshold_percent / 100.0)
 
         urun_algilandi = urun_sayisi > 0
+        kalip_yeni_kapandi = self.state.previous_kalip_acik and not kalip_acik
         degerlendirilen_urun_sayisi = urun_sayisi
-        urun_tepe_hazir = False
+        urun_sayisi_hazir = False
 
         if urun_roi_selected:
-            if urun_algilandi:
+            if kalip_acik:
                 if not self.state.urun_sayim_aktif:
                     self.state.urun_sayim_aktif = True
-                    self.state.urun_sayim_maksimum = urun_sayisi
+                    self.state.urun_sayim_maksimum = 0
                     self.state.urun_sayim_tepe_goruldu = False
-                else:
-                    if urun_sayisi < self.state.urun_sayim_maksimum:
-                        self.state.urun_sayim_tepe_goruldu = True
-                    self.state.urun_sayim_maksimum = max(self.state.urun_sayim_maksimum, urun_sayisi)
+                self.state.urun_sayim_maksimum = max(self.state.urun_sayim_maksimum, urun_sayisi)
                 degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
-            else:
-                if self.state.urun_sayim_aktif:
-                    degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
-                    urun_tepe_hazir = True
+                self.state.last_completed_product_count = degerlendirilen_urun_sayisi
+                self.state.last_completed_yield_percent = int(
+                    round((degerlendirilen_urun_sayisi / max(1, self.state.expected_count)) * 100)
+                )
+            elif kalip_yeni_kapandi and self.state.urun_sayim_aktif:
+                degerlendirilen_urun_sayisi = self.state.urun_sayim_maksimum
+                urun_sayisi_hazir = True
+                self.state.last_completed_product_count = degerlendirilen_urun_sayisi
+                self.state.last_completed_yield_percent = int(
+                    round((degerlendirilen_urun_sayisi / max(1, self.state.expected_count)) * 100)
+                )
                 self.state.urun_sayim_aktif = False
                 self.state.urun_sayim_maksimum = 0
                 self.state.urun_sayim_tepe_goruldu = False
@@ -954,6 +964,22 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             self.state.previous_urun_detected = urun_algilandi
             self.update_status(SYSTEM_DISABLED_MESSAGE)
         elif not kalip_acik:
+            if urun_roi_selected and kalip_yeni_kapandi:
+                if degerlendirilen_urun_sayisi >= minimum_required:
+                    self.state.consecutive_low_yield_cycles = 0
+                    self.state.low_yield_missing_counts = []
+                    self.state.threshold_fault_latched = False
+                    self.state.threshold_fault_count = None
+                elif degerlendirilen_urun_sayisi > self.state.minimum_urun_count:
+                    self.state.consecutive_low_yield_cycles += 1
+                    self.state.threshold_fault_count = degerlendirilen_urun_sayisi
+                    eksik_urun = max(0, int(round(minimum_required)) - degerlendirilen_urun_sayisi)
+                    if self.state.low_yield_missing_counts is None:
+                        self.state.low_yield_missing_counts = []
+                    self.state.low_yield_missing_counts.append(eksik_urun)
+                    self.state.low_yield_missing_counts = self.state.low_yield_missing_counts[-3:]
+                    if self.state.consecutive_low_yield_cycles >= 3:
+                        self.state.threshold_fault_latched = True
             signal = 1
             signal_zero_reason = ""
             self.state.output_latched_high = False
@@ -977,28 +1003,15 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                     else:
                         urun_fault = True
                 else:
-                    urun_sayisi_hazir = urun_tepe_hazir or self.state.urun_sayim_tepe_goruldu or not self.state.urun_sayim_aktif
-                    deger_guncellemeye_hazir = (
-                        urun_sayisi_hazir
-                        and (
-                            degerlendirilen_urun_sayisi > self.state.minimum_urun_count
-                            or self.state.previous_urun_detected
-                            or urun_tepe_hazir
-                        )
-                    )
-                    if deger_guncellemeye_hazir:
-                        self.state.last_completed_product_count = degerlendirilen_urun_sayisi
-                        self.state.last_completed_yield_percent = int(
-                            round((degerlendirilen_urun_sayisi / max(1, self.state.expected_count)) * 100)
-                        )
-                    if urun_sayisi_hazir and degerlendirilen_urun_sayisi >= minimum_required:
+                    urun_sayisi_hazir = degerlendirilen_urun_sayisi >= minimum_required
+                    if urun_sayisi_hazir:
                         self.state.consecutive_low_yield_cycles = 0
                         self.state.low_yield_missing_counts = []
                         self.state.low_yield_cycle_recorded = True
                         self.state.threshold_fault_latched = False
                         self.state.threshold_fault_count = None
                         self.state.waiting_products_to_clear = True
-                    elif urun_sayisi_hazir and (urun_algilandi or self.state.previous_urun_detected):
+                    elif kalip_yeni_kapandi and degerlendirilen_urun_sayisi > self.state.minimum_urun_count:
                         if not self.state.low_yield_cycle_recorded:
                             self.state.consecutive_low_yield_cycles += 1
                             self.state.low_yield_cycle_recorded = True
@@ -1112,6 +1125,9 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
 
             self.state.previous_yolluk_detected = yolluk_var
             self.state.previous_urun_detected = urun_algilandi
+            self.state.previous_kalip_acik = kalip_acik
+
+        self.state.previous_kalip_acik = kalip_acik
 
         STM32Serial.STM32Serial(chr(signal))
 
