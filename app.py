@@ -877,22 +877,10 @@ class MainWindow(QWidget):
         yield_percent = self.state.last_completed_yield_percent
         obtained_color = METRIC_OK_COLOR if obtained_count >= minimum_required else METRIC_FAIL_COLOR
         yield_color = METRIC_OK_COLOR if yield_percent >= self.state.threshold_percent else METRIC_FAIL_COLOR
-        low_yield_text = ""
-        if 0 < self.state.consecutive_low_yield_cycles < 3:
-            low_yield_text = f" | <span style='color: {METRIC_FAIL_COLOR};'>Düşük Verim</span>"
-        elif self.state.consecutive_low_yield_cycles >= 3:
-            eksik_urunler = self.state.low_yield_missing_counts or []
-            if eksik_urunler:
-                ortalama_eksik = round(sum(eksik_urunler[-3:]) / len(eksik_urunler[-3:]), 1)
-                low_yield_text = (
-                    f" | <span style='color: {METRIC_FAIL_COLOR};'>"
-                    f"3 baskı ortalama {ortalama_eksik:g} ürün eksik</span>"
-                )
         return (
             f"Beklenen: {expected_text} | "
             f"<span style='color: {obtained_color};'>Elde Edilen: {obtained_count}</span> | "
             f"<span style='color: {yield_color};'>Verim: %{yield_percent}</span>"
-            f"{low_yield_text}"
         )
 
     def update_frame(self) -> None:
@@ -1036,11 +1024,11 @@ class MainWindow(QWidget):
                 if self.state.threshold_fault_latched:
                     eksik_urunler = self.state.low_yield_missing_counts or []
                     if eksik_urunler:
-                        ortalama_eksik = round(sum(eksik_urunler[-3:]) / len(eksik_urunler[-3:]), 1)
+                        eksik_urun = eksik_urunler[-1]
                     else:
                         threshold_fault_count = self.state.threshold_fault_count if self.state.threshold_fault_count is not None else 0
-                        ortalama_eksik = max(0, int(round(minimum_required)) - threshold_fault_count)
-                    signal_zero_reason_parts.append(f"Verimsiz Baskı: 3 baskı ortalama {ortalama_eksik:g} adet ürün eksik")
+                        eksik_urun = max(0, int(round(minimum_required)) - threshold_fault_count)
+                    signal_zero_reason_parts.append(f"Verimsiz Baskı: Eksik Ürün: {eksik_urun:g}")
                 elif self.state.waiting_products_to_clear:
                     signal_zero_reason_parts.append("Kalmış Ürün")
                 else:
@@ -1122,7 +1110,10 @@ class MainWindow(QWidget):
 
         self.metric_count.setText(self.build_metric_count_text(minimum_required))
         if signal != 0:
-            self.set_fault_text("")
+            if 0 < self.state.consecutive_low_yield_cycles < 3:
+                self.set_fault_text("Düşük Verim")
+            else:
+                self.set_fault_text("")
         self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
