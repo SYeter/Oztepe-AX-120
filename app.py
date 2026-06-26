@@ -451,15 +451,17 @@ class MainWindow(QWidget):
         guide_dialog.setWindowTitle("Program Kullanma Klavuzu")
 
         guide_text = (
-            "Öncelikle kalıbı içerisinde ürün varken, en açık pozisyona getiriniz\n"
-            "\"Pabuç Seç\" butonuna tıklayıp bir pabuç seçiniz (Açık kalıp kontrolü)\n"
-            "\"Ürün alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
-            "\"Yolluk alanı\" bölümünde de yolluğun çıktığı alanı aynı şekilde seçiniz.\n"
-            "\"Ürün seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler); "
-            "ürünün dışına taşmayacak şekilde seçiniz. "
-            "Ürün seçmedeki amaç ürünün rengini sisteme tanıtmak, eğer mümkünse ürünün kapsadığı alanı sisteme tanıtmaktır. Ürün boyutu ne ne kadar doğru seçilirse ürün sayımı o kadar doğru olur.\n"
-            "Aşağıya düşmüş yollukları algılayıp makineyi durdurmaması için; yolluk büyüklüğü değerini artırınız. Fazla artırırsanız düşmemiş yollukları da algılamaz. İdeal ayar bir yolluğu kolona asılı kalmış vaziyette bırakıp o şekilde yapılabilir."
-            "\nÖzellikle beyaz tonlarındaki ürünlerde kalıp yüzeyini ürün olarak algılayıp kalıbı kapatmazsa, minimum ürün değerini algıladığı ürün sayısından bir fazla olarak ayarlayın"
+            "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir.\n"
+            "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
+            "\"Pabuç Seç\" butonuna tıklayıp bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
+            "\"Ürün Alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
+            "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz ki sistem harici unsurları algılamasın.\n"
+            "\"Ürün Seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
+            "Ürün seçmedeki amaç, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
+            "\nGünün farklı saatlerinde oluşan ışık değişiklikleri nedeniyle algılamada aksama yaşanırsa, gündüz ve gece için birer kez bu işlemi tekrarlamanız gerekebilir. Ancak çoğu durumda buna gerek kalmaz.\n"
+            "Aşağıya düşmüş yollukları algılayıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. Bu değeri fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. En doğru ayar, bir yolluğu kolona asılı kalmış şekilde bırakıp ayarı bu durumda yapmaktır.\n"
+            "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
+            "\nÖzellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. Örneğin ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıp kapanmıyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir."
         )
 
         layout = QVBoxLayout(guide_dialog)
