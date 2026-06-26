@@ -66,6 +66,7 @@ class AppState:
     urun_sayim_tepe_goruldu: bool = False
     threshold_fault_latched: bool = False
     threshold_fault_count: int | None = None
+    low_yield_missing_counts: list[int] | None = None
     consecutive_low_yield_cycles: int = 0
     low_yield_cycle_recorded: bool = False
     last_completed_product_count: int = 0
@@ -250,6 +251,8 @@ class MainWindow(QWidget):
         self.load_settings()
         self.selection_mode: str | None = None
         self.current_frame: np.ndarray | None = None
+        if self.state.low_yield_missing_counts is None:
+            self.state.low_yield_missing_counts = []
 
         self.cap = NoBufferVideoCapture(RTSP_URL)
         if not self.cap.is_opened():
@@ -477,44 +480,37 @@ class MainWindow(QWidget):
         guide_dialog = QDialog(self)
         guide_dialog.setWindowTitle("Program Kullanma Klavuzu")
 
-        guide_text = (
-    "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. "
-    "Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.\n\n"
+        guide_blue = "#9fb3d8"
+        guide_text = f"""
+<div style="font-size: 14px; font-weight: bold; line-height: 115%;">
+<p>Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.</p>
 
-    "Kullanım\n"
-    "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
-    "\"Pabuç Seç\" butonuna tıklayarak bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
-    "\"Ürün Alanı\" butonuna tıklayarak kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
-    "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz. Böylece sistem, bu alanların dışındaki unsurları algılamaz.\n"
-    "\"Ürün Seç\" butonuna tıklayarak en net görünen ürünlerden birini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
-    "Ürün seçiminin amacı, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. "
-    "Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
+<h2 align="center" style="color: {METRIC_OK_COLOR};">KULLANIM</h2>
+<p>Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.<br>
+<span style="color: {guide_blue};">&quot;Pabuç Seç&quot;</span> butonuna tıklayarak bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.<br>
+<span style="color: {guide_blue};">&quot;Ürün Alanı&quot;</span> butonuna tıklayarak kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.<br>
+<span style="color: {guide_blue};">&quot;Yolluk Alanı&quot;</span> bölümünde de yolluğun çıktığı en küçük alanı seçiniz. Böylece sistem, bu alanların dışındaki unsurları algılamaz.<br>
+<span style="color: {guide_blue};">&quot;Ürün Seç&quot;</span> butonuna tıklayarak en net görünen ürünlerden birini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. Ürün seçiminin amacı, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.</p>
 
-    "AKŞAM SAATLERİNDE (GENELLİKLE SAAT 19.00'DAN SONRA) AX-90 MAKİNESİNİN ÜZERİNDEKİ SPOT IŞIK AÇILMALI VE KALIBI KISMEN DE OLSA AYDINLATACAK BİR POZİSYONA GETİRİLMELİDİR. "
-    "Aksi takdirde hava karardıktan sonra sistemden verim alınamaz. "
-    "Işık açık olduğu hâlde ürün veya yolluk algılamasında sorun yaşanırsa, yukarıdaki ürün seçme işlemi tekrarlanabilir veya makineye ilave bir aydınlatma sistemi eklenebilir.\n"
+<p><span style="color: {METRIC_FAIL_COLOR};">AKŞAM SAATLERİNDE (GENELLİKLE SAAT 19.00'DAN SONRA) AX-90 MAKİNESİNİN ÜZERİNDEKİ SPOT IŞIK AÇILMALI VE KALIBI KISMEN DE OLSA AYDINLATACAK BİR POZİSYONA GETİRİLMELİDİR.</span> Aksi takdirde hava karardıktan sonra sistemden verim alınamaz. Işık açık olduğu hâlde ürün veya yolluk algılamasında sorun yaşanırsa, yukarıdaki ürün seçme işlemi tekrarlanabilir veya makineye ilave bir aydınlatma sistemi eklenebilir.</p>
 
-    "Aşağıya düşmüş yollukların algılanıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. "
-    "Bu değeri gereğinden fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. "
-    "En doğru ayar için bir yolluğu kolona asılı kalacak şekilde bırakıp ayarı bu durumda yapmanız önerilir.\n"
+<p>Aşağıya düşmüş yollukların algılanıp makinenin durmasını engellemek için <span style="color: {guide_blue};">&quot;Yolluk Büyüklüğü&quot;</span> değerini artırınız. Bu değeri gereğinden fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. En doğru ayar için bir yolluğu kolona asılı kalacak şekilde bırakıp ayarı bu durumda yapmanız önerilir.</p>
 
-    "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
+<p><span style="color: {METRIC_FAIL_COLOR};">ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!</span></p>
 
-    "\"Alanları Sil\" butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.\n"
-    "\"Reset\" butonu, mevcut hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem, yalnızca bir defaya mahsus olmak üzere baskı alınmasına izin verir.\n"
-    "\"Sistem Bilgisi\" bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.\n\n"
+<p><span style="color: {guide_blue};">&quot;Alanları Sil&quot;</span> butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.<br>
+<span style="color: {guide_blue};">&quot;Reset&quot;</span> butonu, mevcut hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem, yalnızca bir defaya mahsus olmak üzere baskı alınmasına izin verir.<br>
+<span style="color: {guide_blue};">&quot;Sistem Bilgisi&quot;</span> bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.</p>
 
-    "Parametreler\n"
-    "Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. "
-    "Örneğin, ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıbın kapanmasına izin vermiyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. "
-    "Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.\n"
+<h2 align="center" style="color: {METRIC_OK_COLOR};">PARAMETRELER</h2>
+<p>Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. Örneğin, ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıbın kapanmasına izin vermiyorsa, <span style="color: {guide_blue};">&quot;Minimum Ürün&quot;</span> değerini 2 olarak ayarlayabilirsiniz. Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.</p>
 
-    "\"Müdahale Süresi\", sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. "
-    "Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.\n\n"
+<p><span style="color: {guide_blue};">&quot;Müdahale Süresi&quot;</span>, sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.</p>
 
-    "Verim\n"
-    "Örneğin, belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler."
-)
+<h2 align="center" style="color: {METRIC_OK_COLOR};">VERİM</h2>
+<p>Örneğin, belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler.</p>
+</div>
+"""
 
         layout = QVBoxLayout(guide_dialog)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -525,8 +521,8 @@ class MainWindow(QWidget):
         scroll_area.setFrameShape(QFrame.NoFrame)
 
         guide_label = QLabel(guide_text)
+        guide_label.setTextFormat(Qt.RichText)
         guide_label.setWordWrap(True)
-        guide_label.setStyleSheet("font-size: 14px; font-weight: bold; line-height: 115%;")
         guide_label.setContentsMargins(6, 6, 6, 6)
         scroll_area.setWidget(guide_label)
         layout.addWidget(scroll_area, 1)
@@ -576,6 +572,7 @@ class MainWindow(QWidget):
             "urun_sayim_tepe_goruldu",
             "threshold_fault_latched",
             "threshold_fault_count",
+            "low_yield_missing_counts",
             "consecutive_low_yield_cycles",
             "low_yield_cycle_recorded",
             "last_completed_product_count",
@@ -602,6 +599,7 @@ class MainWindow(QWidget):
             "urun_sayim_tepe_goruldu",
             "threshold_fault_latched",
             "threshold_fault_count",
+            "low_yield_missing_counts",
             "consecutive_low_yield_cycles",
             "low_yield_cycle_recorded",
             "last_completed_product_count",
@@ -635,6 +633,7 @@ class MainWindow(QWidget):
         self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.low_yield_missing_counts = []
         self.state.consecutive_low_yield_cycles = 0
         self.state.low_yield_cycle_recorded = False
         self.state.kalip_acik_mavi_sure_baslangic = None
@@ -653,6 +652,7 @@ class MainWindow(QWidget):
         self.state.urun_sayim_tepe_goruldu = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.low_yield_missing_counts = []
         self.state.consecutive_low_yield_cycles = 0
         self.state.low_yield_cycle_recorded = False
         self.state.kalip_acik_mavi_sure_baslangic = None
@@ -696,6 +696,7 @@ class MainWindow(QWidget):
         self.state.low_yield_cycle_recorded = False
         self.state.threshold_fault_latched = False
         self.state.threshold_fault_count = None
+        self.state.low_yield_missing_counts = []
         self.save_settings()
         self.update_status("✅ Parametreler güncellendi.")
 
@@ -876,10 +877,22 @@ class MainWindow(QWidget):
         yield_percent = self.state.last_completed_yield_percent
         obtained_color = METRIC_OK_COLOR if obtained_count >= minimum_required else METRIC_FAIL_COLOR
         yield_color = METRIC_OK_COLOR if yield_percent >= self.state.threshold_percent else METRIC_FAIL_COLOR
+        low_yield_text = ""
+        if 0 < self.state.consecutive_low_yield_cycles < 3:
+            low_yield_text = f" | <span style='color: {METRIC_FAIL_COLOR};'>Düşük Verim</span>"
+        elif self.state.consecutive_low_yield_cycles >= 3:
+            eksik_urunler = self.state.low_yield_missing_counts or []
+            if eksik_urunler:
+                ortalama_eksik = round(sum(eksik_urunler[-3:]) / len(eksik_urunler[-3:]), 1)
+                low_yield_text = (
+                    f" | <span style='color: {METRIC_FAIL_COLOR};'>"
+                    f"3 baskı ortalama {ortalama_eksik:g} ürün eksik</span>"
+                )
         return (
             f"Beklenen: {expected_text} | "
             f"<span style='color: {obtained_color};'>Elde Edilen: {obtained_count}</span> | "
             f"<span style='color: {yield_color};'>Verim: %{yield_percent}</span>"
+            f"{low_yield_text}"
         )
 
     def update_frame(self) -> None:
@@ -985,6 +998,7 @@ class MainWindow(QWidget):
                         )
                     if urun_sayisi_hazir and degerlendirilen_urun_sayisi >= minimum_required:
                         self.state.consecutive_low_yield_cycles = 0
+                        self.state.low_yield_missing_counts = []
                         self.state.low_yield_cycle_recorded = True
                         self.state.threshold_fault_latched = False
                         self.state.threshold_fault_count = None
@@ -994,6 +1008,11 @@ class MainWindow(QWidget):
                             self.state.consecutive_low_yield_cycles += 1
                             self.state.low_yield_cycle_recorded = True
                             self.state.threshold_fault_count = degerlendirilen_urun_sayisi
+                            eksik_urun = max(0, int(round(minimum_required)) - degerlendirilen_urun_sayisi)
+                            if self.state.low_yield_missing_counts is None:
+                                self.state.low_yield_missing_counts = []
+                            self.state.low_yield_missing_counts.append(eksik_urun)
+                            self.state.low_yield_missing_counts = self.state.low_yield_missing_counts[-3:]
                         if self.state.consecutive_low_yield_cycles >= 3:
                             urun_fault = True
                             self.state.threshold_fault_latched = True
@@ -1015,9 +1034,13 @@ class MainWindow(QWidget):
             signal_zero_reason_parts: list[str] = []
             if urun_roi_selected and urun_fault:
                 if self.state.threshold_fault_latched:
-                    threshold_fault_count = self.state.threshold_fault_count if self.state.threshold_fault_count is not None else 0
-                    eksik_urun = max(0, int(round(minimum_required)) - threshold_fault_count)
-                    signal_zero_reason_parts.append(f"Verimsiz Baskı: {eksik_urun} adet ürün eksik")
+                    eksik_urunler = self.state.low_yield_missing_counts or []
+                    if eksik_urunler:
+                        ortalama_eksik = round(sum(eksik_urunler[-3:]) / len(eksik_urunler[-3:]), 1)
+                    else:
+                        threshold_fault_count = self.state.threshold_fault_count if self.state.threshold_fault_count is not None else 0
+                        ortalama_eksik = max(0, int(round(minimum_required)) - threshold_fault_count)
+                    signal_zero_reason_parts.append(f"Verimsiz Baskı: 3 baskı ortalama {ortalama_eksik:g} adet ürün eksik")
                 elif self.state.waiting_products_to_clear:
                     signal_zero_reason_parts.append("Kalmış Ürün")
                 else:
