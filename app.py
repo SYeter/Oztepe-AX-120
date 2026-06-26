@@ -471,18 +471,29 @@ class MainWindow(QWidget):
         guide_dialog.setWindowTitle("Program Kullanma Klavuzu")
 
         guide_text = (
-            "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir.\n"
+
+            "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.\n\n"
+
+            "Kullanım\n"
             "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
             "\"Pabuç Seç\" butonuna tıklayıp bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
             "\"Ürün Alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
             "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz ki sistem harici unsurları algılamasın.\n"
             "\"Ürün Seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
             "Ürün seçmedeki amaç, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
-            "\nGünün farklı saatlerinde oluşan ışık değişiklikleri nedeniyle algılamada aksama yaşanırsa, gündüz ve gece için birer kez bu işlemi tekrarlamanız gerekebilir. Ancak çoğu durumda buna gerek kalmaz.\n"
+            "Günün farklı saatlerinde oluşan ışık değişiklikleri nedeniyle algılamada aksama yaşanırsa, gündüz ve gece için birer kez bu işlemi tekrarlamanız gerekebilir. Ancak çoğu durumda buna gerek kalmaz.\n"
             "Aşağıya düşmüş yollukları algılayıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. Bu değeri fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. En doğru ayar, bir yolluğu kolona asılı kalmış şekilde bırakıp ayarı bu durumda yapmaktır.\n"
             "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
-            "\nÖzellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. Örneğin ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıp kapanmıyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir."
-        )
+            "\"Alanları Sil\" butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.\n"
+            "\"Reset\" butonu, o anki hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem bir defaya mahsus baskı alınmasına izin verir.\n"
+            "\"Sistem Bilgisi\" bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.\n\n"
+
+            "Parametreler\n"
+            "Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. Örneğin ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıp kapanmıyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.\n"
+            "\"Müdahale Süresi\", sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.\n\n"
+
+            "Verim\n"
+            "Örneğin belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler.")
 
         layout = QVBoxLayout(guide_dialog)
         layout.setContentsMargins(10, 10, 10, 10)
