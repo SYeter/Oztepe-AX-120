@@ -478,29 +478,43 @@ class MainWindow(QWidget):
         guide_dialog.setWindowTitle("Program Kullanma Klavuzu")
 
         guide_text = (
+    "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. "
+    "Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.\n\n"
 
-            "Bu sistem, kalıp arasında yolluk veya ürün kalmasını engellemek ve kalıbın istenen verimde çalışmasını sağlamak amacıyla geliştirilmiştir. Sistemi doğru kullanmak için lütfen bu rehberi sonuna kadar okuyunuz.\n\n"
+    "Kullanım\n"
+    "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
+    "\"Pabuç Seç\" butonuna tıklayarak bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
+    "\"Ürün Alanı\" butonuna tıklayarak kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
+    "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz. Böylece sistem, bu alanların dışındaki unsurları algılamaz.\n"
+    "\"Ürün Seç\" butonuna tıklayarak en net görünen ürünlerden birini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
+    "Ürün seçiminin amacı, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. "
+    "Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
 
-            "Kullanım\n"
-            "Öncelikle kalıbı, içerisinde ürün varken en açık pozisyona getiriniz.\n"
-            "\"Pabuç Seç\" butonuna tıklayıp bir pabuç seçiniz. Sistem, kalıbın açık olduğunu bu seçimden anlar.\n"
-            "\"Ürün Alanı\" butonuna tıklayıp kalıpta ürünlerin çıktığı alanı kapsayacak en küçük alanı seçiniz.\n"
-            "\"Yolluk Alanı\" bölümünde de yolluğun çıktığı en küçük alanı seçiniz ki sistem harici unsurları algılamasın.\n"
-            "\"Ürün Seç\" butonuna tıklayıp en net görünen ürünlerden bir tanesini (genellikle en üsttekiler) ürünün dışına taşmayacak şekilde seçiniz. "
-            "Ürün seçmedeki amaç, ürünün rengini sisteme tanıtmak ve mümkünse ürünün kapladığı alanı sisteme öğretmektir. Ürün boyutu ne kadar doğru seçilirse, ürün sayımı da o kadar doğru olur.\n"
-            "Günün farklı saatlerinde oluşan ışık değişiklikleri nedeniyle algılamada aksama yaşanırsa, gündüz ve gece için birer kez bu işlemi tekrarlamanız gerekebilir. Ancak çoğu durumda buna gerek kalmaz.\n"
-            "Aşağıya düşmüş yollukları algılayıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. Bu değeri fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. En doğru ayar, bir yolluğu kolona asılı kalmış şekilde bırakıp ayarı bu durumda yapmaktır.\n"
-            "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
-            "\"Alanları Sil\" butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.\n"
-            "\"Reset\" butonu, o anki hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem bir defaya mahsus baskı alınmasına izin verir.\n"
-            "\"Sistem Bilgisi\" bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.\n\n"
+    "AKŞAM SAATLERİNDE (GENELLİKLE SAAT 19.00'DAN SONRA) AX-90 MAKİNESİNİN ÜZERİNDEKİ SPOT IŞIK AÇILMALI VE KALIBI KISMEN DE OLSA AYDINLATACAK BİR POZİSYONA GETİRİLMELİDİR. "
+    "Aksi takdirde hava karardıktan sonra sistemden verim alınamaz. "
+    "Işık açık olduğu hâlde ürün veya yolluk algılamasında sorun yaşanırsa, yukarıdaki ürün seçme işlemi tekrarlanabilir veya makineye ilave bir aydınlatma sistemi eklenebilir.\n"
 
-            "Parametreler\n"
-            "Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. Örneğin ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıp kapanmıyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.\n"
-            "\"Müdahale Süresi\", sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.\n\n"
+    "Aşağıya düşmüş yollukların algılanıp makinenin durmasını engellemek için \"Yolluk Büyüklüğü\" değerini artırınız. "
+    "Bu değeri gereğinden fazla artırırsanız, düşmemiş yolluklar da algılanmayabilir. "
+    "En doğru ayar için bir yolluğu kolona asılı kalacak şekilde bırakıp ayarı bu durumda yapmanız önerilir.\n"
 
-            "Verim\n"
-            "Örneğin belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler.")
+    "ÜRÜNLERİN DÜŞTÜĞÜ BÖLÜMDE YOLLUK VEYA ÜRÜN KALMAMALIDIR. AKSİ TAKDİRDE SİSTEM YANLIŞ ALGILAMA YAPABİLİR!\n"
+
+    "\"Alanları Sil\" butonu, seçtiğiniz alanları siler ve programı devre dışı bırakır.\n"
+    "\"Reset\" butonu, mevcut hatayı temizler ve bir kez görmezden gelir. Hata devam etse bile sistem, yalnızca bir defaya mahsus olmak üzere baskı alınmasına izin verir.\n"
+    "\"Sistem Bilgisi\" bölümünden sistemin anlık durumunu, oluşan hataları ve bu hataların nedenlerini takip edebilirsiniz.\n\n"
+
+    "Parametreler\n"
+    "Özellikle beyaz tonlarındaki ürünlerde, kalıptaki ışık yansımaları ürün olarak algılanabilir. "
+    "Örneğin, ürünler düşmesine rağmen sistem 2 ürün algılıyor ve bu nedenle kalıbın kapanmasına izin vermiyorsa, \"Minimum Ürün\" değerini 2 olarak ayarlayabilirsiniz. "
+    "Böylece sistem 2 ürün algılasa bile kalıbın kapanmasına izin verir.\n"
+
+    "\"Müdahale Süresi\", sistem bir hata tespit ettiğinde ne kadar süre sonra müdahale edeceğini belirler. "
+    "Örneğin, düşmemiş bir yolluk algılandığında makinenin hemen mi durdurulacağı, yoksa belirlenen süre sonunda yolluk hâlâ düşmemişse mi durdurulacağı bu parametre ile ayarlanır.\n\n"
+
+    "Verim\n"
+    "Örneğin, belirlenen ürün sayısı 30 ve verim eşiği %50 ise, makine art arda 3 kez 15 adetten daha az ürün üretirse kendisini kilitler."
+)
 
         layout = QVBoxLayout(guide_dialog)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -1270,7 +1284,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
             else:
                 alan_orani = cv2.countNonZero(yolluk_mask) / yolluk_mask.size
                 yolluk_var = alan_orani > 0.03
-        draw_roi(debug, state.yolluk_roi, (255, 0, 0), f"Yolluk {'VAR' if yolluk_var else 'YOK'}")
+        draw_roi(debug, state.yolluk_roi, (255, 0, 0), f"Yolluk {'Var' if yolluk_var else 'Yok'}")
 
     urun_sayisi = 0
     if state.urun_roi:
