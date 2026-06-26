@@ -80,6 +80,7 @@ YOLLUK_REARM_SECONDS = 2
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
 METRIC_OK_COLOR = "#66df8f"
 METRIC_FAIL_COLOR = "#ff6f6f"
+NUMERIC_BUTTON_AUTOREPEAT_INTERVAL_MS = 8
 
 
 class NoBufferVideoCapture:
@@ -721,8 +722,8 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         plus_btn.setAutoRepeat(True)
         minus_btn.setAutoRepeatDelay(350)
         plus_btn.setAutoRepeatDelay(350)
-        minus_btn.setAutoRepeatInterval(23)
-        plus_btn.setAutoRepeatInterval(23)
+        minus_btn.setAutoRepeatInterval(NUMERIC_BUTTON_AUTOREPEAT_INTERVAL_MS)
+        plus_btn.setAutoRepeatInterval(NUMERIC_BUTTON_AUTOREPEAT_INTERVAL_MS)
         minus_btn.clicked.connect(lambda _=False, field=input_field, s=step: self.nudge_numeric_field(field, -s))
         plus_btn.clicked.connect(lambda _=False, field=input_field, s=step: self.nudge_numeric_field(field, s))
         row.addWidget(input_field)
