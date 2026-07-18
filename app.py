@@ -3,6 +3,7 @@ from __future__ import annotations
 import html
 import json
 import sys
+import traceback
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -11,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 from Electronics import STM32Serial
-from PyQt5.QtCore import QTimer, Qt
+from PyQt5.QtCore import QTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QIcon, QImage, QPainter, QPixmap
 from PyQt5.QtWidgets import (
     QApplication,
@@ -81,6 +82,8 @@ SYSTEM_DISABLED_MESSAGE = "Yolluk veya ürün alanlarından en az biri seçilmel
 YOLLUK_REARM_SECONDS = 2
 KALIP_KAPANMA_URUN_KONTROL_SECONDS = 1.0
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
+ERROR_LOG_PATH = Path(__file__).with_name("hata_loglari.jsonl")
+CAMERA_RECONNECT_SECONDS = 2.0
 METRIC_OK_COLOR = "#66df8f"
 METRIC_FAIL_COLOR = "#ff6f6f"
 NUMERIC_BUTTON_AUTOREPEAT_INTERVAL_MS = 8
@@ -90,25 +93,47 @@ class NoBufferVideoCapture:
     """Kamera buffer'ini biriktirmeden en guncel kareyi donduren capture sarmalayicisi."""
 
     def __init__(self, source: str) -> None:
-        self.capture = cv2.VideoCapture(source, cv2.CAP_FFMPEG)
+        self.source = source
+        self.capture = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG)
         self.lock = threading.Lock()
         self.latest_frame: np.ndarray | None = None
-        self.running = self.capture.isOpened()
+        self.last_error: str = ""
+        self.running = True
 
         self.thread = threading.Thread(target=self._reader, daemon=True)
-        if self.running:
-            self.thread.start()
+        self.thread.start()
 
     def _reader(self) -> None:
         while self.running:
+            if not self.capture.isOpened():
+                self.last_error = "RTSP yayını açılamadı. Kamera bağlantısı tekrar deneniyor."
+                self._reconnect_after_delay()
+                continue
+
             ok, frame = self.capture.read()
             if not ok:
+                self.last_error = "Kameradan görüntü alınamadı. Bağlantı tekrar kurulmaya çalışılıyor."
+                with self.lock:
+                    self.latest_frame = None
+                self.capture.release()
+                self._reconnect_after_delay()
                 continue
+
             with self.lock:
                 self.latest_frame = frame
+            self.last_error = ""
+
+    def _reconnect_after_delay(self) -> None:
+        time.sleep(CAMERA_RECONNECT_SECONDS)
+        if not self.running:
+            return
+        self.capture = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG)
 
     def is_opened(self) -> bool:
         return self.capture.isOpened()
+
+    def get_last_error(self) -> str:
+        return self.last_error
 
     def read(self) -> tuple[bool, np.ndarray | None]:
         with self.lock:
@@ -247,8 +272,11 @@ class MarqueeLabel(QLabel):
 
 
 class MainWindow(QWidget):
+    fatal_error_signal = pyqtSignal(str)
+
     def __init__(self) -> None:
         super().__init__()
+        self.fatal_error_signal.connect(self.handle_fatal_error)
         self.setWindowTitle(WINDOW_TITLE)
         self.setWindowIcon(QIcon("owl.ico"))
         self.setWindowFlag(Qt.FramelessWindowHint, True)
@@ -261,8 +289,6 @@ class MainWindow(QWidget):
             self.state.low_yield_missing_counts = []
 
         self.cap = NoBufferVideoCapture(RTSP_URL)
-        if not self.cap.is_opened():
-            raise RuntimeError("RTSP yayini acilamadi. URL bilgisini veya erisim yetkisini kontrol edin.")
 
         self.video_label = VideoLabel(self)
 
@@ -270,6 +296,8 @@ class MainWindow(QWidget):
         self.current_kalip_text = "Kalıp: Kapalı"
         self.current_signal_text = "Çıkış Sinyali: 0"
         self.current_fault_text = ""
+        self.last_logged_error_key = ""
+        self.last_logged_error_time = 0.0
 
         self.expected_input = QLineEdit(str(self.state.expected_count))
         self.threshold_input = QLineEdit(str(self.state.threshold_percent))
@@ -466,13 +494,24 @@ class MainWindow(QWidget):
         left_panel.setFixedWidth(385)
 
         guide_btn = QPushButton("Nasıl Kullanılır")
-        guide_btn.setStyleSheet("font-size: 14px; font-weight: bold; padding: 6px 8px;")
+        guide_btn.setFixedWidth(128)
+        guide_btn.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px 6px;")
         guide_btn.clicked.connect(self.show_user_guide)
+        error_logs_btn = QPushButton("Hata Logları")
+        error_logs_btn.setFixedWidth(118)
+        error_logs_btn.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px 6px;")
+        error_logs_btn.clicked.connect(self.show_error_logs)
+        top_buttons = QHBoxLayout()
+        top_buttons.setContentsMargins(0, 0, 0, 0)
+        top_buttons.setSpacing(6)
+        top_buttons.addWidget(guide_btn)
+        top_buttons.addWidget(error_logs_btn)
+        top_buttons.addStretch(1)
 
         camera_panel = QWidget()
         camera_panel_layout = QVBoxLayout(camera_panel)
         camera_panel_layout.setContentsMargins(0, 0, 0, 0)
-        camera_panel_layout.addWidget(guide_btn, 0, Qt.AlignTop)
+        camera_panel_layout.addLayout(top_buttons)
         camera_panel_layout.addWidget(self.video_label, 1)
 
         root = QHBoxLayout()
@@ -542,6 +581,57 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         guide_dialog.resize(760, 560)
         guide_dialog.setMaximumSize(780, 580)
         guide_dialog.exec_()
+
+    def show_error_logs(self) -> None:
+        logs_dialog = QDialog(self)
+        logs_dialog.setWindowTitle("Hata Logları")
+        logs_dialog.setStyleSheet(self.styleSheet())
+
+        log_text = self.build_error_log_text()
+        layout = QVBoxLayout(logs_dialog)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(8)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setFrameShape(QFrame.NoFrame)
+
+        log_label = QLabel(log_text)
+        log_label.setTextFormat(Qt.RichText)
+        log_label.setWordWrap(True)
+        log_label.setContentsMargins(6, 6, 6, 6)
+        scroll_area.setWidget(log_label)
+        layout.addWidget(scroll_area, 1)
+
+        close_button = QPushButton("Kapat")
+        close_button.clicked.connect(logs_dialog.accept)
+        layout.addWidget(close_button, 0, Qt.AlignRight)
+        logs_dialog.resize(760, 560)
+        logs_dialog.setMaximumSize(780, 580)
+        logs_dialog.exec_()
+
+    def build_error_log_text(self) -> str:
+        if not ERROR_LOG_PATH.exists():
+            return "<p><b>Kayıtlı hata bulunmuyor.</b></p>"
+
+        entries: list[str] = []
+        for line in ERROR_LOG_PATH.read_text(encoding="utf-8").splitlines()[-300:]:
+            try:
+                entry = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            timestamp = html.escape(str(entry.get("timestamp", "")))
+            message = html.escape(str(entry.get("message", "")))
+            status = html.escape(str(entry.get("status", "")))
+            recovered_at = html.escape(str(entry.get("recovered_at", "")))
+            status_text = f" <span style='color: {METRIC_OK_COLOR};'>Düzeldi: {recovered_at}</span>" if recovered_at else ""
+            entries.append(
+                f"<p><b>{timestamp}</b> - <span style='color: {METRIC_FAIL_COLOR};'>{message}</span>"
+                f" <i>{status}</i>{status_text}</p>"
+            )
+        if not entries:
+            return "<p><b>Kayıtlı hata bulunmuyor.</b></p>"
+        return "<div style='font-size: 14px; line-height: 120%;'>" + "".join(reversed(entries)) + "</div>"
 
     def setup_fullscreen_behavior(self) -> None:
         """Uygulama her zaman gercek tam ekran modunda kalsin."""
@@ -897,6 +987,27 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.current_status_message = message
         self.refresh_signal_info()
 
+    def record_error(self, message: str, details: str = "", recovered: bool = False) -> None:
+        now = time.monotonic()
+        error_key = f"{message}|{details[:160]}"
+        if not recovered and error_key == self.last_logged_error_key and (now - self.last_logged_error_time) < 30.0:
+            return
+
+        entry = {
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "message": message,
+            "details": details,
+            "status": "Düzeldi" if recovered else "Aktif",
+            "recovered_at": time.strftime("%Y-%m-%d %H:%M:%S") if recovered else "",
+        }
+        with ERROR_LOG_PATH.open("a", encoding="utf-8") as log_file:
+            log_file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        self.last_logged_error_key = "" if recovered else error_key
+        self.last_logged_error_time = now
+
+    def handle_fatal_error(self, details: str) -> None:
+        self.record_error("Beklenmeyen program hatası", details)
+
     def build_metric_count_text(self, minimum_required: float) -> str:
         expected_text = str(int(round(minimum_required)))
         obtained_count = self.state.last_completed_product_count
@@ -910,10 +1021,22 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         )
 
     def update_frame(self) -> None:
+        try:
+            self.process_frame()
+        except Exception:
+            self.record_error("Program hatası", traceback.format_exc())
+            self.update_status("❌ Program hatası kaydedildi. Çalışma devam ediyor.")
+
+    def process_frame(self) -> None:
         ret, frame = self.cap.read()
         if not ret:
-            self.update_status("❌ Kameradan görüntü alınamadı.")
+            camera_error = self.cap.get_last_error() or "Kameradan görüntü alınamadı."
+            self.record_error("Kamera bağlantı hatası", camera_error)
+            self.update_status(f"❌ {camera_error}")
             return
+
+        if self.last_logged_error_key.startswith("Kamera bağlantı hatası|"):
+            self.record_error("Kamera bağlantı hatası", "Kamera görüntüsü tekrar alındı.", recovered=True)
 
         frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         self.current_frame = frame.copy()
@@ -1139,6 +1262,8 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                     fault_text = "Kalmış Yolluk"
                 elif signal_zero_reason:
                     fault_text = signal_zero_reason
+                if fault_text:
+                    self.record_error(fault_text, f"Çıkış sinyali 0. Kalıp: {'Açık' if kalip_acik else 'Kapalı'}")
             self.set_fault_text(fault_text)
             self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
@@ -1148,7 +1273,8 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
 
         self.state.previous_kalip_acik = kalip_acik
 
-        STM32Serial.STM32Serial(chr(signal))
+        if STM32Serial.STM32Serial(chr(signal)) != 1:
+            self.record_error("STM32 haberleşme hatası", "Seri porta sinyal gönderilemedi. Bir sonraki çevrimde tekrar denenecek.")
 
         self.metric_count.setText(self.build_metric_count_text(minimum_required))
         if signal != 0:
@@ -1422,6 +1548,12 @@ def get_blue_mask(roi: np.ndarray) -> np.ndarray:
 def main() -> None:
     app = QApplication(sys.argv)
     window = MainWindow()
+
+    def log_unhandled_exception(exc_type, exc_value, exc_traceback) -> None:
+        details = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+        window.fatal_error_signal.emit(details)
+
+    sys.excepthook = log_unhandled_exception
     window.show()
     sys.exit(app.exec_())
 
