@@ -1015,7 +1015,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.last_logged_error_time = now
 
     def handle_fatal_error(self, details: str) -> None:
-        self.record_error("Beklenmeyen program hatası", details)
+        self.record_error("Program çökme hatası", details)
 
     def build_metric_count_text(self, minimum_required: float) -> str:
         expected_text = str(int(round(minimum_required)))
@@ -1033,19 +1033,15 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         try:
             self.process_frame()
         except Exception:
-            self.record_error("Program hatası", traceback.format_exc())
-            self.update_status("❌ Program hatası kaydedildi. Çalışma devam ediyor.")
+            self.record_error("Program çalışma hatası", traceback.format_exc())
+            self.update_status("❌ Program çalışma hatası kaydedildi. Çalışma devam ediyor.")
 
     def process_frame(self) -> None:
         ret, frame = self.cap.read()
         if not ret:
             camera_error = self.cap.get_last_error() or "Kameradan görüntü alınamadı."
-            self.record_error("Kamera bağlantı hatası", camera_error)
             self.update_status(f"❌ {camera_error}")
             return
-
-        if self.last_logged_error_key.startswith("Kamera bağlantı hatası|"):
-            self.record_error("Kamera bağlantı hatası", "Kamera görüntüsü tekrar alındı.", recovered=True)
 
         frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
         self.current_frame = frame.copy()
@@ -1271,8 +1267,6 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                     fault_text = "Kalmış Yolluk"
                 elif signal_zero_reason:
                     fault_text = signal_zero_reason
-                if fault_text:
-                    self.record_error(fault_text, f"Çıkış sinyali 0. Kalıp: {'Açık' if kalip_acik else 'Kapalı'}")
             self.set_fault_text(fault_text)
             self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
@@ -1283,7 +1277,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.previous_kalip_acik = kalip_acik
 
         if STM32Serial.STM32Serial(chr(signal)) != 1:
-            self.record_error("STM32 haberleşme hatası", "Seri porta sinyal gönderilemedi. Bir sonraki çevrimde tekrar denenecek.")
+            self.update_status("❌ Seri porta sinyal gönderilemedi. Bir sonraki çevrimde tekrar denenecek.")
 
         self.metric_count.setText(self.build_metric_count_text(minimum_required))
         if signal != 0:
@@ -1319,7 +1313,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             self.last_cpu_temp_read_at = now
 
     def draw_camera_metrics(self, frame: np.ndarray) -> None:
-        temp_text = "CPU: okunamadı" if self.current_cpu_temp_c is None else f"CPU: {self.current_cpu_temp_c:.1f}°C"
+        temp_text = "CPU: --" if self.current_cpu_temp_c is None else f"CPU: {self.current_cpu_temp_c:.1f}C"
         fps_text = f"FPS: {self.current_fps:.1f}"
         lines = [temp_text, fps_text]
         font = cv2.FONT_HERSHEY_SIMPLEX
