@@ -970,15 +970,24 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
 
     def build_signal_info_text(self) -> str:
         kalip_text = html.escape(self.current_kalip_text)
+        signal_text = html.escape(self.current_signal_text)
         kalip_part = f"<span style='color: {METRIC_OK_COLOR};'>{kalip_text}</span>"
+        signal_color = METRIC_FAIL_COLOR if signal_text.endswith(": 0") else METRIC_OK_COLOR
+        signal_part = f"<span style='color: {signal_color};'>{signal_text}</span>"
         if self.current_fault_text:
             fault_text = html.escape(self.current_fault_text)
             return (
                 f"{kalip_part} "
                 "<span style='color: #ffffff;'>|</span> "
+                f"{signal_part} "
+                "<span style='color: #ffffff;'>|</span> "
                 f"<span style='color: {METRIC_FAIL_COLOR};'>{fault_text}</span>"
             )
-        return kalip_part
+        return (
+            f"{kalip_part} "
+            "<span style='color: #ffffff;'>|</span> "
+            f"{signal_part}"
+        )
 
     def refresh_signal_info(self, color: str | None = None) -> None:
         self.metric_signal.setStyleSheet("font-size: 14px; font-weight: 600;")
@@ -1206,19 +1215,22 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
 
             if self.state.timeout_latched_high:
                 signal = 1
-                if yolluk_roi_selected:
-                    if yolluk_var:
-                        self.state.yolluk_clear_since = None
-                    else:
-                        if self.state.yolluk_clear_since is None:
-                            self.state.yolluk_clear_since = now
-                        elif (now - self.state.yolluk_clear_since) >= YOLLUK_REARM_SECONDS:
-                            self.state.timeout_latched_high = False
-                            self.state.fault_detected_since = None
-                            self.state.output_latched_high = False
-                            self.update_status("✅ Yolluk 2 sn boyunca görünmedi. Sinyal tekrar yolluğa duyarlı.")
-                else:
+                if urun_fault:
                     self.state.timeout_latched_high = False
+                    self.state.output_latched_high = False
+                    self.state.fault_detected_since = now
+                    self.state.yolluk_clear_since = None
+                    self.update_status("⚠️ Kalmış ürün hatası devam ediyor. Makineyi durdurmak için sinyal tekrar 0'a çekilecek.")
+                elif fault_detected:
+                    self.state.yolluk_clear_since = None
+                else:
+                    if self.state.yolluk_clear_since is None:
+                        self.state.yolluk_clear_since = now
+                    elif (now - self.state.yolluk_clear_since) >= YOLLUK_REARM_SECONDS:
+                        self.state.timeout_latched_high = False
+                        self.state.fault_detected_since = None
+                        self.state.output_latched_high = False
+                        self.update_status("✅ Hata 2 sn boyunca görünmedi. Sinyal tekrar hatalara duyarlı.")
             if not self.state.timeout_latched_high:
                 if self.state.output_latched_high and not reset_latch:
                     signal = 1
@@ -1263,10 +1275,14 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                 )
             fault_text = ""
             if signal == 0:
+                active_faults: list[str] = []
                 if yolluk_roi_selected and yolluk_var:
-                    fault_text = "Kalmış Yolluk"
-                elif signal_zero_reason:
-                    fault_text = signal_zero_reason
+                    active_faults.append("Kalmış Yolluk")
+                if signal_zero_reason:
+                    active_faults.append(signal_zero_reason)
+                fault_text = " ve ".join(active_faults)
+                if fault_text:
+                    self.record_error("Makine durdurma hatası", fault_text)
             self.set_fault_text(fault_text)
             self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
@@ -1277,7 +1293,9 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         self.state.previous_kalip_acik = kalip_acik
 
         if STM32Serial.STM32Serial(chr(signal)) != 1:
-            self.update_status("❌ Seri porta sinyal gönderilemedi. Bir sonraki çevrimde tekrar denenecek.")
+            serial_error = STM32Serial.get_last_error() or "Seri porta sinyal gönderilemedi."
+            self.record_error("STM32 seri haberleşme hatası", f"Gönderilen sinyal: {signal} | {serial_error}")
+            self.update_status(f"❌ {serial_error} Bir sonraki çevrimde tekrar denenecek.")
 
         self.metric_count.setText(self.build_metric_count_text(minimum_required))
         if signal != 0:

@@ -1,23 +1,20 @@
 import serial
 
-import time
-# try:
-#     serialcomm = serial.Serial('COM8', 9600)
-# except:
-#     pass
-# serialcomm.timeout = 0.5
+
+LAST_ERROR = ""
+
+
+def get_last_error():
+    return LAST_ERROR
+
 
 def STM32Serial(command):
-
-    # i = command
+    global LAST_ERROR
     try:
         with serial.Serial('COM4', 9600, timeout=0.5, write_timeout=0.5) as serialcomm:
             serialcomm.write(command.encode())
+        LAST_ERROR = ""
         return 1
-    except:
+    except Exception as exc:
+        LAST_ERROR = f"COM4 seri haberleşme hatası: {exc}"
         return 0
-    # time.sleep(0.5)
-
-    # print(serialcomm.readline().decode('ascii'))
-
-# serialcomm.close()
