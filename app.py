@@ -83,10 +83,13 @@ YOLLUK_REARM_SECONDS = 2
 KALIP_KAPANMA_URUN_KONTROL_SECONDS = 1.0
 SETTINGS_PATH = Path(__file__).with_name("app_settings.json")
 ERROR_LOG_PATH = Path(__file__).with_name("hata_loglari.jsonl")
-CAMERA_RECONNECT_SECONDS = 2.0
+CAMERA_RECONNECT_SECONDS = 0.5
 METRIC_OK_COLOR = "#66df8f"
 METRIC_FAIL_COLOR = "#ff6f6f"
 NUMERIC_BUTTON_AUTOREPEAT_INTERVAL_MS = 8
+TOP_ACTIONS_TOTAL_WIDTH = 128
+TOP_ACTIONS_SPACING = 6
+CPU_TEMP_REFRESH_SECONDS = 1.0
 
 
 class NoBufferVideoCapture:
@@ -298,6 +301,11 @@ class MainWindow(QWidget):
         self.current_fault_text = ""
         self.last_logged_error_key = ""
         self.last_logged_error_time = 0.0
+        self.frame_counter = 0
+        self.fps_started_at = time.monotonic()
+        self.current_fps = 0.0
+        self.last_cpu_temp_read_at = 0.0
+        self.current_cpu_temp_c: float | None = None
 
         self.expected_input = QLineEdit(str(self.state.expected_count))
         self.threshold_input = QLineEdit(str(self.state.threshold_percent))
@@ -494,16 +502,17 @@ class MainWindow(QWidget):
         left_panel.setFixedWidth(385)
 
         guide_btn = QPushButton("Nasıl Kullanılır")
-        guide_btn.setFixedWidth(128)
+        compact_button_width = (TOP_ACTIONS_TOTAL_WIDTH - TOP_ACTIONS_SPACING) // 2
+        guide_btn.setFixedWidth(compact_button_width)
         guide_btn.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px 6px;")
         guide_btn.clicked.connect(self.show_user_guide)
         error_logs_btn = QPushButton("Hata Logları")
-        error_logs_btn.setFixedWidth(118)
+        error_logs_btn.setFixedWidth(TOP_ACTIONS_TOTAL_WIDTH - TOP_ACTIONS_SPACING - compact_button_width)
         error_logs_btn.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px 6px;")
         error_logs_btn.clicked.connect(self.show_error_logs)
         top_buttons = QHBoxLayout()
         top_buttons.setContentsMargins(0, 0, 0, 0)
-        top_buttons.setSpacing(6)
+        top_buttons.setSpacing(TOP_ACTIONS_SPACING)
         top_buttons.addWidget(guide_btn)
         top_buttons.addWidget(error_logs_btn)
         top_buttons.addStretch(1)
@@ -1284,6 +1293,9 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
                 self.set_fault_text("")
         self.set_signal_text(f"Çıkış Sinyali: {signal}", signal)
 
+        self.refresh_camera_metrics()
+        self.draw_camera_metrics(debug_frame)
+
         rgb = cv2.cvtColor(debug_frame, cv2.COLOR_BGR2RGB)
         h, w, ch = rgb.shape
         qt_image = QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888)
@@ -1292,10 +1304,68 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             pixmap.scaled(self.video_label.width(), self.video_label.height(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
         )
 
+
+    def refresh_camera_metrics(self) -> None:
+        now = time.monotonic()
+        self.frame_counter += 1
+        elapsed = now - self.fps_started_at
+        if elapsed >= 1.0:
+            self.current_fps = self.frame_counter / elapsed
+            self.frame_counter = 0
+            self.fps_started_at = now
+
+        if now - self.last_cpu_temp_read_at >= CPU_TEMP_REFRESH_SECONDS:
+            self.current_cpu_temp_c = read_cpu_temperature_c()
+            self.last_cpu_temp_read_at = now
+
+    def draw_camera_metrics(self, frame: np.ndarray) -> None:
+        temp_text = "CPU: --.-C" if self.current_cpu_temp_c is None else f"CPU: {self.current_cpu_temp_c:.1f}C"
+        fps_text = f"FPS: {self.current_fps:.1f}"
+        lines = [temp_text, fps_text]
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        font_scale = max(0.65, frame.shape[1] / 1200)
+        thickness = max(2, int(round(font_scale * 2)))
+        padding = 8
+        line_gap = 7
+        sizes = [cv2.getTextSize(line, font, font_scale, thickness)[0] for line in lines]
+        box_width = max(width for width, _ in sizes) + (padding * 2)
+        box_height = sum(height for _, height in sizes) + line_gap * (len(lines) - 1) + (padding * 2)
+        x1 = max(0, frame.shape[1] - box_width - 10)
+        y1 = 10
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (x1, y1), (x1 + box_width, y1 + box_height), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+        text_y = y1 + padding
+        for line, (_, text_height) in zip(lines, sizes):
+            text_y += text_height
+            cv2.putText(frame, line, (x1 + padding, text_y), font, font_scale, (255, 255, 255), thickness + 2, cv2.LINE_AA)
+            cv2.putText(frame, line, (x1 + padding, text_y), font, font_scale, (102, 223, 143), thickness, cv2.LINE_AA)
+            text_y += line_gap
+
     def closeEvent(self, event) -> None:  # type: ignore[override]
         self.save_settings()
         self.cap.release()
         event.accept()
+
+
+def read_cpu_temperature_c() -> float | None:
+    thermal_root = Path("/sys/class/thermal")
+    try:
+        temp_files = sorted(thermal_root.glob("thermal_zone*/temp"))
+    except OSError:
+        return None
+
+    for temp_file in temp_files:
+        try:
+            raw_value = temp_file.read_text(encoding="utf-8").strip()
+            temp_value = float(raw_value)
+        except (OSError, ValueError):
+            continue
+        if temp_value > 1000:
+            temp_value /= 1000.0
+        if -40.0 <= temp_value <= 125.0:
+            return temp_value
+    return None
 
 
 def normalize_roi(p1: tuple[int, int], p2: tuple[int, int]) -> tuple[int, int, int, int]:
