@@ -87,8 +87,6 @@ CAMERA_RECONNECT_SECONDS = 0.5
 METRIC_OK_COLOR = "#66df8f"
 METRIC_FAIL_COLOR = "#ff6f6f"
 NUMERIC_BUTTON_AUTOREPEAT_INTERVAL_MS = 8
-TOP_ACTIONS_TOTAL_WIDTH = 128
-TOP_ACTIONS_SPACING = 6
 CPU_TEMP_REFRESH_SECONDS = 1.0
 
 
@@ -502,20 +500,18 @@ class MainWindow(QWidget):
         left_panel.setFixedWidth(385)
 
         guide_btn = QPushButton("Nasıl Kullanılır")
-        compact_button_width = (TOP_ACTIONS_TOTAL_WIDTH - TOP_ACTIONS_SPACING) // 2
-        guide_btn.setFixedWidth(compact_button_width)
+        guide_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         guide_btn.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px 6px;")
         guide_btn.clicked.connect(self.show_user_guide)
         error_logs_btn = QPushButton("Hata Logları")
-        error_logs_btn.setFixedWidth(TOP_ACTIONS_TOTAL_WIDTH - TOP_ACTIONS_SPACING - compact_button_width)
+        error_logs_btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         error_logs_btn.setStyleSheet("font-size: 12px; font-weight: bold; padding: 4px 6px;")
         error_logs_btn.clicked.connect(self.show_error_logs)
         top_buttons = QHBoxLayout()
         top_buttons.setContentsMargins(0, 0, 0, 0)
-        top_buttons.setSpacing(TOP_ACTIONS_SPACING)
-        top_buttons.addWidget(guide_btn)
-        top_buttons.addWidget(error_logs_btn)
-        top_buttons.addStretch(1)
+        top_buttons.setSpacing(0)
+        top_buttons.addWidget(guide_btn, 1)
+        top_buttons.addWidget(error_logs_btn, 1)
 
         camera_panel = QWidget()
         camera_panel_layout = QVBoxLayout(camera_panel)
@@ -1319,7 +1315,7 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
             self.last_cpu_temp_read_at = now
 
     def draw_camera_metrics(self, frame: np.ndarray) -> None:
-        temp_text = "CPU: --.-C" if self.current_cpu_temp_c is None else f"CPU: {self.current_cpu_temp_c:.1f}C"
+        temp_text = "CPU: okunamadı" if self.current_cpu_temp_c is None else f"CPU: {self.current_cpu_temp_c:.1f}°C"
         fps_text = f"FPS: {self.current_fps:.1f}"
         lines = [temp_text, fps_text]
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -1349,22 +1345,54 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
 
 
 def read_cpu_temperature_c() -> float | None:
-    thermal_root = Path("/sys/class/thermal")
-    try:
-        temp_files = sorted(thermal_root.glob("thermal_zone*/temp"))
-    except OSError:
-        return None
-
-    for temp_file in temp_files:
-        try:
-            raw_value = temp_file.read_text(encoding="utf-8").strip()
-            temp_value = float(raw_value)
-        except (OSError, ValueError):
-            continue
-        if temp_value > 1000:
-            temp_value /= 1000.0
-        if -40.0 <= temp_value <= 125.0:
+    temp_paths = list_cpu_temperature_paths()
+    for temp_file in temp_paths:
+        temp_value = read_temperature_file_c(temp_file)
+        if temp_value is not None:
             return temp_value
+    return None
+
+
+def list_cpu_temperature_paths() -> list[Path]:
+    preferred_paths: list[Path] = []
+    fallback_paths: list[Path] = []
+
+    for hwmon_dir in sorted(Path("/sys/class/hwmon").glob("hwmon*")):
+        for temp_file in sorted(hwmon_dir.glob("temp*_input")):
+            label_file = temp_file.with_name(temp_file.name.replace("_input", "_label"))
+            label = read_optional_text(label_file).lower()
+            name = read_optional_text(hwmon_dir / "name").lower()
+            if any(keyword in f"{name} {label}" for keyword in ("cpu", "core", "package", "k10temp", "coretemp")):
+                preferred_paths.append(temp_file)
+            else:
+                fallback_paths.append(temp_file)
+
+    for temp_file in sorted(Path("/sys/class/thermal").glob("thermal_zone*/temp")):
+        zone_type = read_optional_text(temp_file.parent / "type").lower()
+        if any(keyword in zone_type for keyword in ("cpu", "x86_pkg_temp", "soc", "thermal")):
+            preferred_paths.append(temp_file)
+        else:
+            fallback_paths.append(temp_file)
+
+    return preferred_paths + fallback_paths
+
+
+def read_optional_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def read_temperature_file_c(path: Path) -> float | None:
+    try:
+        temp_value = float(path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return None
+    if temp_value > 1000:
+        temp_value /= 1000.0
+    if -40.0 <= temp_value <= 125.0:
+        return temp_value
     return None
 
 
