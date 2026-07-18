@@ -43,6 +43,7 @@ class AppState:
     selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]] | None = None
     selected_lab: tuple[float, float, float] | None = None
     selected_lab_tolerance: float = 22.0
+    selected_lab_l_tolerance: float = 35.0
     selected_is_low_sat: bool = False
     single_product_area: int | None = None
     kalip_acik_roi: tuple[int, int, int, int] | None = None
@@ -919,10 +920,13 @@ Seçim yaparken mümkün olduğunca yalnızca ürünü seçmeye özen gösterin.
         selected_lab = cv2.cvtColor(selected_area, cv2.COLOR_BGR2LAB).reshape(-1, 3).astype(np.float32)
         lab_mean = selected_lab.mean(axis=0)
         self.state.selected_lab = (float(lab_mean[0]), float(lab_mean[1]), float(lab_mean[2]))
+        l_values = selected_lab[:, 0]
+        l_dist = np.abs(l_values - lab_mean[0])
         ab_values = selected_lab[:, 1:3]
         ab_mean = lab_mean[1:3]
         ab_dist = np.linalg.norm(ab_values - ab_mean, axis=1)
         self.state.selected_lab_tolerance = float(np.clip(np.percentile(ab_dist, 95) + 10.0, 12.0, 38.0))
+        self.state.selected_lab_l_tolerance = float(np.clip(np.percentile(l_dist, 95) + 18.0, 18.0, 55.0))
         sat_values = cv2.cvtColor(selected_area, cv2.COLOR_BGR2HSV).reshape(-1, 3)[:, 1]
         self.state.selected_is_low_sat = float(np.median(sat_values)) < 35.0
         self.state.selected_hsv_ranges = extract_hsv_ranges_from_roi(selected_area)
@@ -1437,6 +1441,7 @@ def build_mask_by_selected_color(
     selected_hsv_ranges: list[tuple[tuple[int, int, int], tuple[int, int, int]]],
     selected_lab: tuple[float, float, float] | None,
     selected_lab_tolerance: float,
+    selected_lab_l_tolerance: float,
     selected_is_low_sat: bool,
 ) -> np.ndarray:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
@@ -1452,11 +1457,19 @@ def build_mask_by_selected_color(
 
     lab = cv2.cvtColor(frame, cv2.COLOR_BGR2LAB).astype(np.float32)
     lab_ref = np.array(selected_lab, dtype=np.float32).reshape((1, 1, 3))
+    l_dist = np.abs(lab[:, :, 0] - lab_ref[:, :, 0])
     ab_dist = np.linalg.norm(lab[:, :, 1:3] - lab_ref[:, :, 1:3], axis=2)
-    lab_mask = np.where(ab_dist <= selected_lab_tolerance, 255, 0).astype(np.uint8)
+    chroma_mask = ab_dist <= selected_lab_tolerance
 
     if selected_is_low_sat:
+        # Beyaz/gri/siyah gibi düşük doygunluklu ürünlerde a/b renk kanalları
+        # birbirine çok yakındır. Sadece a/b mesafesi kullanılırsa koyu gri kalıp
+        # yüzeyleri de beyaz ürün gibi algılanır. Bu nedenle nötr renklerde L
+        # (parlaklık) kanalını da zorunlu tutuyoruz.
+        lab_mask = np.where(chroma_mask & (l_dist <= selected_lab_l_tolerance), 255, 0).astype(np.uint8)
         return lab_mask
+
+    lab_mask = np.where(chroma_mask, 255, 0).astype(np.uint8)
     return cv2.bitwise_and(mask, lab_mask)
 
 
@@ -1537,6 +1550,7 @@ def count_products_and_yolluk(frame: np.ndarray, state: AppState) -> tuple[int, 
         state.selected_hsv_ranges,
         state.selected_lab,
         state.selected_lab_tolerance,
+        state.selected_lab_l_tolerance,
         state.selected_is_low_sat,
     )
     kernel = np.ones((3, 3), np.uint8)
