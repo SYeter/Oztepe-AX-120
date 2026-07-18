@@ -11,8 +11,8 @@ def STM32Serial(command):
 
     # i = command
     try:
-        serialcomm = serial.Serial('COM4', 9600)
-        serialcomm.write(command.encode())
+        with serial.Serial('COM4', 9600, timeout=0.5, write_timeout=0.5) as serialcomm:
+            serialcomm.write(command.encode())
         return 1
     except:
         return 0
